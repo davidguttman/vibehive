@@ -1,0 +1,25 @@
+{
+  "name": "vibehive",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "lint": "standard --fix",
+    "start": "node index.js",
+    "test": "tape test/**/*.test.js"
+  },
+  "keywords": [],
+  "author": "David Guttman <david@davidguttman.com> (http://davidguttman.com/)",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.18.0",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "standard": "^17.1.2",
+    "tape": "^5.9.0"
+  }
+}

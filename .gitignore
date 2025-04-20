@@ -1,1 +1,3 @@
 !.specstory
+node_modules
+.env

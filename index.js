@@ -12,6 +12,7 @@ const {
 const config = require('./config') // Use the config module // Added
 const { connectDB } = require('./lib/mongo') // Import connectDB // Added
 const Repository = require('./models/Repository') // Import the Repository model // Added
+const { invokeAiderWrapper } = require('./lib/pythonWrapper') // Added import
 
 // 3. Constants
 // const BOT_TOKEN = process.env.DISCORD_TOKEN // Removed
@@ -45,16 +46,17 @@ const commands = [
 // Discord Client Setup
 const client = new Client({
   intents: [
-    GatewayIntentBits.Guilds // Required for basic guild information
-    // Add other intents as needed
+    GatewayIntentBits.Guilds, // Required for basic guild information
+    GatewayIntentBits.GuildMessages, // Added
+    GatewayIntentBits.MessageContent // Added (Privileged)
   ]
 })
 
 // REST API setup for command registration
-const rest = new REST({ version: '10' }).setToken(discordToken); // Added
+const rest = new REST({ version: '10' }).setToken(discordToken) // Added
 
 // Function to register slash commands
-(async () => {
+async function registerCommands () {
   try {
     console.log(`Started refreshing ${commands.length} application (/) commands.`) // Log count // Modified
 
@@ -68,7 +70,7 @@ const rest = new REST({ version: '10' }).setToken(discordToken); // Added
   } catch (error) {
     console.error('Error registering commands:', error)
   }
-})()
+}
 
 // Event: Bot Ready
 client.once(Events.ClientReady, c => {
@@ -162,20 +164,101 @@ client.on(Events.InteractionCreate, async interaction => {
   // Add handlers for other commands here
 })
 
-// Login to Discord and Connect to DB // Added block
-async function startBot () { // Added
-  try { // Added
-    await connectDB() // Connect to DB first // Added
-    await client.login(discordToken) // Then login to Discord // Added
-    console.log('Login successful!') // Added
-  } catch (error) { // Added
-    console.error('Bot failed to start:', error) // Added
-    process.exit(1) // Added
-  } // Added
-} // Added
+// Exportable handler function
+async function handleMessageCreate (client, message) {
+  // 1. Ignore messages from bots (including self)
+  if (message.author.bot) return
 
-startBot() // Call the async start function // Added
+  // 2. Check if the bot was mentioned
+  if (message.mentions.has(client.user)) {
+    console.log(`Bot mentioned by ${message.author.tag} in channel ${message.channel.id}`)
+
+    // 3. Extract the prompt (remove mention + trim)
+    const mentionRegex = new RegExp(`^<@!?${client.user.id}>\\s*`)
+    const prompt = message.content.replace(mentionRegex, '').trim()
+
+    if (!prompt) {
+      // If the message was just the mention with nothing else
+      console.log('Mention received without a prompt.')
+      message.reply('You mentioned me, but didn\'t provide a prompt!').catch(console.error) // Optional reply
+      return
+    }
+
+    console.log(`Extracted prompt: "${prompt}"`)
+
+    // 4. Get channelId
+    const channelId = message.channelId
+
+    try {
+      // Ensure DB is connected (assuming connectDB handles multiple calls safely)
+      await connectDB()
+
+      // 5. Find Repository config for this channel
+      const repoConfig = await Repository.findOne({ discordChannelId: channelId })
+
+      if (!repoConfig) {
+        console.log(`No repository configured for channel ${channelId}`)
+        message.reply({ content: 'This channel is not configured for AI interactions. An admin can use `/add-repo` to set it up.', ephemeral: true }).catch(console.error)
+        return
+      }
+
+      console.log(`Found repository config for channel ${channelId}: ${repoConfig.repoUrl}`)
+
+      // Add some user feedback that the request is being processed
+      const processingMessage = await message.reply('Processing your request...').catch(console.error)
+
+      // 6. Invoke the Python wrapper
+      const result = await invokeAiderWrapper({ prompt }) // Pass prompt in options object
+
+      // 7. Process the result (logging for now)
+      if (result.status === 'success') {
+        console.log('Python wrapper succeeded:', result.data)
+        const responseContent = result.data?.events?.[0]?.content || 'Received a response, but couldn\'t extract content.'
+        // Use message.channel.send for follow-up, don't rely on the reply object
+        message.channel.send(`**Response for @${message.author.username}:**\n\`\`\`\n${responseContent}\n\`\`\``).catch(console.error)
+      } else {
+        console.error('Python wrapper failed:', result.error)
+        message.channel.send(`There was an error processing your request for @${message.author.username}: ${result.error}`).catch(console.error)
+      }
+      // Optionally delete the 'Processing...' message if it exists
+      if (processingMessage) {
+        processingMessage.delete().catch(console.error)
+      }
+    } catch (error) {
+      console.error('Error handling mention:', error)
+      try {
+        message.reply('Sorry, something went wrong while processing your request.').catch(console.error)
+      } catch (replyError) {
+        // Should not happen if initial reply error is caught
+        console.error('Failed to send error reply:', replyError)
+      }
+    }
+  }
+  // No mention or handled above, ignore the message otherwise
+}
+
+// Attach the handler
+client.on(Events.MessageCreate, (message) => handleMessageCreate(client, message))
+
+// Login to Discord and Connect to DB
+async function startBot () {
+  try {
+    await connectDB() // Connect to DB first
+    await registerCommands() // Register commands after DB connection, before login
+    await client.login(discordToken) // Then login to Discord
+    console.log('Login successful!')
+  } catch (error) {
+    console.error('Bot failed to start:', error)
+    process.exit(1)
+  }
+}
+
+// Only run startup logic if this file is executed directly
+if (require.main === module) {
+  startBot()
+}
 
 // 5. Module Exports (None needed for this file)
+module.exports = { handleMessageCreate } // Remove client export
 
 // 6. Functions (Helper functions could go here if the file grew larger)

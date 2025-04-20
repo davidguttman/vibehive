@@ -25,6 +25,10 @@ test('connectDB Function with Mongoose', async (t) => {
   let dbInstance
 
   try {
+    // Ensure any previous connection is closed before testing connectDB
+    await mongoose.disconnect()
+    t.comment('Disconnected existing mongoose connection before connectDB test')
+
     // Connect using the full URI
     dbInstance = await connectDB(fullUri)
     t.ok(dbInstance, 'connectDB should return a DB instance')
@@ -51,6 +55,10 @@ test('connectDB Function with Mongoose', async (t) => {
 test('getDB Function with Mongoose', async (t) => {
   const testDbName = 'mongoose-getdb-test'
   const fullUri = `${baseUri}${testDbName}`
+
+  // Ensure clean state before this test
+  await mongoose.disconnect()
+  t.comment('Disconnected existing mongoose connection before getDB test')
 
   // Test getDB before connection (Mongoose connection state is 0)
   // Mongoose doesn't typically throw here, getDB might return null or an inactive db object initially

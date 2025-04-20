@@ -15,20 +15,22 @@ Implement slash commands for managing context files.
 
 2.  **Interaction Handler Logic (`events/interactionCreate.js`):**
     *   **Handle `/files`:**
-        *   Find the `Repository` document using `interaction.channelId`. Reply with an error if not found.
+        *   Find the `Repository` document using `discordChannelId: interaction.channelId`. Reply with an error if not found.
         *   Retrieve the `contextFiles` array.
         *   Format the file list (e.g., code block, numbered list) and reply. If empty, reply "No files currently in context."
     *   **Handle `/add`:**
-        *   Find the `Repository` document using `interaction.channelId`. Reply with an error if not found.
+        *   Find the `Repository` document using `discordChannelId: interaction.channelId`. Reply with an error if not found.
         *   Get the `paths` option, split by spaces, and filter out empty strings.
         *   **Validate Paths:** Reject paths starting with `/` or containing `..`. Reply with an error for invalid paths.
-        *   **Update Database:** Use MongoDB's `$addToSet` with `$each` to add valid, unique paths to the `contextFiles` array.
+        *   **Update Database:** Use `Repository.updateOne({ discordChannelId: interaction.channelId }, { $addToSet: { contextFiles: { $each: validPaths } } })`.
         *   Reply confirming which files were added.
     *   **Handle `/drop`:**
-        *   Find the `Repository` document using `interaction.channelId`. Reply with an error if not found.
+        *   Find the `Repository` document using `discordChannelId: interaction.channelId`. Reply with an error if not found.
         *   Get the `paths` option and split by spaces.
-        *   **Update Database:** Use MongoDB's `$pull` with `$in` to remove specified paths from the `contextFiles` array.
-        *   Reply confirming which files were removed (or mention if they weren't in the list).
+        *   **Check Existence:** Filter `pathsToRemove` against `repo.contextFiles` to see if any are present.
+        *   If none are present, reply immediately indicating they weren't found.
+        *   If some are present, Update DB: `await Repository.updateOne({ discordChannelId: interaction.channelId }, { $pull: { contextFiles: { $in: pathsToRemove } } });`
+        *   Reply confirming which files were removed, or reply that none of the specified files were found if the initial check fails.
 
 3.  **Code Style:** Use `standard.js`. Run `standard --fix` after implementation.
 
@@ -36,9 +38,23 @@ Implement slash commands for managing context files.
 
 1.  **Setup:**
     *   Use `tape` for tests.
-    *   Utilize an in-memory MongoDB instance (e.g., `mongodb-memory-server`).
-    *   Seed the database with a test `Repository` document before tests.
-    *   Mock the `interaction` object for each command scenario, including `interaction.reply`.
+    *   Utilize `mongodb-memory-server` to start an in-memory MongoDB instance **per test file** or managed carefully across files.
+    *   **Database Seeding:**
+        *   Use a setup block (e.g., a dedicated `test(...)` block) before command tests.
+        *   Clear the relevant collection (e.g., `mongoose.connection.db.dropCollection('repositories')`) to ensure a clean state.
+        *   Use `Repository.insertMany([...])` to seed necessary test documents.
+        *   **Important:** Ensure seeded documents use the correct schema field names (e.g., `discordChannelId`, `repoUrl`).
+    *   **Interaction Simulation:**
+        *   Create a minimal `discord.js` `Client` instance within the test setup.
+        *   Load the `interactionCreate.js` event handler and attach it to the client's `Events.InteractionCreate` event.
+        *   Create mock `interaction` objects for each test case using a factory function.
+        *   **Trigger Handler:** Use `client.emit(Events.InteractionCreate, interaction)` to run the command logic.
+        *   **Mock Replies:** Override `interaction.reply` and `interaction.followUp` within a helper function (e.g., `runCommand`) that wraps `client.emit`. Use promises to wait for the reply/follow-up and resolve with its content for assertions.
+    *   **Connection Management:**
+        *   Avoid global `mongoose.connect()` calls in test setup blocks, as this can interfere with other test files.
+        *   If a test file needs a connection (e.g., for seeding), explicitly call `connectDB()` from `lib/mongo.js` using the test file's specific `mongoServer` URI before the relevant test block.
+        *   Ensure Mongoose disconnects cleanly. Use `test.onFinish(async () => { await mongoose.disconnect(); await mongoServer.stop(); })` for final cleanup, but be aware this runs after *all* tests in all files.
+        *   If connection conflicts arise between test files (especially when testing DB logic itself), consider adding explicit `mongoose.disconnect()` calls *before* establishing connections within specific test blocks (as demonstrated in `test/db.test.js`).
 
 2.  **Test Cases:**
     *   **`/files` Command:**
@@ -51,9 +67,9 @@ Implement slash commands for managing context files.
     *   **`/drop` Command:**
         *   Assert the `Repository` document in the database is updated correctly (specified files removed).
         *   Verify the reply message confirms the removed files.
-        *   Test dropping files that don't exist; assert the database state is unchanged and the reply indicates this.
+        *   Test dropping files that don't exist; assert the database state is unchanged and the reply **indicates the files were not found**.
     *   **Error Handling:**
-        *   Test all commands fail gracefully with an appropriate error reply if no repository is configured for `interaction.channelId`.
+        *   Test all commands fail gracefully with an appropriate error reply if no repository is configured for the channel (`discordChannelId`).
 
 3.  **Execution:** Ensure all tests pass when running `npm test`.
 
@@ -65,20 +81,23 @@ Implement slash commands for managing context files.
     *   Run the script to register/update the commands with Discord.
 
 2.  **Interaction Handling (`events/interactionCreate.js`):**
-    *   Add `if/else if` blocks or a switch statement within the `interactionCreate` event handler to check `interaction.commandName`.
-    *   **Common Logic:** Inside each command handler, first attempt to find the `Repository` based on `interaction.channelId`. If not found, call `interaction.reply({ content: 'No repository configured for this channel.', ephemeral: true });` and return.
-    *   **`/files` Logic:** Retrieve `repo.contextFiles`. Format and send the reply using `interaction.reply`. Handle the empty case.
+    *   Ensure the handler is correctly loaded and attached to the client in `index.js` (dynamic loading recommended).
+    *   **Common Logic:** Inside each command handler, first attempt to find the `Repository` based on `discordChannelId: interaction.channelId`. If not found, reply and return.
+    *   **`/files` Logic:** Retrieve `repo.contextFiles`. Format and send the reply. Handle the empty case.
     *   **`/add` Logic:**
-        *   Get paths: `const paths = interaction.options.getString('paths').split(' ').filter(p => p);`
-        *   Validate paths: Loop through `paths`, check for invalid patterns (`startsWith('/')`, `includes('..')`). If invalid, reply with an error and return.
-        *   Update DB: `await Repository.updateOne({ channelId: interaction.channelId }, { $addToSet: { contextFiles: { $each: validPaths } } });`
+        *   Get and filter paths.
+        *   Validate paths.
+        *   Update DB: `await Repository.updateOne({ discordChannelId: interaction.channelId }, { $addToSet: { contextFiles: { $each: validPaths } } });`
         *   Send confirmation reply.
     *   **`/drop` Logic:**
-        *   Get paths: `const pathsToRemove = interaction.options.getString('paths').split(' ').filter(p => p);`
-        *   Update DB: `const updateResult = await Repository.updateOne({ channelId: interaction.channelId }, { $pull: { contextFiles: { $in: pathsToRemove } } });`
-        *   Send confirmation reply, potentially indicating how many were actually removed based on `updateResult.modifiedCount` (though `$pull` doesn't easily tell *which* were removed if some didn't exist). A simpler confirmation is usually sufficient.
+        *   Get and filter paths.
+        *   **Check Existence:** Filter `pathsToRemove` against `repo.contextFiles` to see if any are present.
+        *   If none are present, reply immediately indicating they weren't found.
+        *   If some are present, Update DB: `await Repository.updateOne({ discordChannelId: interaction.channelId }, { $pull: { contextFiles: { $in: pathsToRemove } } });`
+        *   Send confirmation reply based on the update result (`modifiedCount`).
 
 3.  **Testing (`test/contextCommands.test.js`):**
-    *   Follow the testing requirements outlined above, mocking dependencies and asserting database state and replies.
+    *   Implement the test setup strategy described above (client emission, careful seeding, connection management).
+    *   Write test cases covering success scenarios, edge cases (no files, invalid paths, file not found), and error handling (no repo configured).
 
 Remember to run `standard --fix` on your code files after making changes. 

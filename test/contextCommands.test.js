@@ -32,7 +32,11 @@ const createMockInteraction = (commandName, options = {}, discordChannelId = 'te
 
 // Test setup: start in-memory MongoDB and connect mongoose
 test.onFinish(async () => {
-  await mongoose.disconnect()
+  // Disconnect Mongoose *after* all tests run
+  // This allows subsequent test files (like db.test.js) to manage their own connections
+  // without this file interfering by disconnecting too early.
+  // However, ensure it *does* disconnect eventually.
+  await mongoose.disconnect().catch(err => console.error('Error during final disconnect:', err))
   if (mongoServer) {
     await mongoServer.stop()
   }
@@ -41,13 +45,10 @@ test.onFinish(async () => {
 test('Setup In-Memory MongoDB and Discord Client', async (t) => {
   // Start Mongo
   mongoServer = await MongoMemoryServer.create()
-  const mongoUri = mongoServer.getUri()
-  try {
-    await mongoose.connect(mongoUri)
-    t.pass('Connected to in-memory MongoDB')
-  } catch (err) {
-    t.fail('Failed to connect to in-memory MongoDB', err)
-  }
+  // const mongoUri = mongoServer.getUri() // Removed unused variable
+  // DO NOT connect mongoose globally here. Let tests manage connection via connectDB if needed.
+  // try {
+  t.pass('In-memory MongoDB server started for contextCommands tests')
 
   // Setup mock client and load handlers (similar to index.js but minimal)
   client = new Client({ intents: [GatewayIntentBits.Guilds] }) // Minimal intents
@@ -82,6 +83,12 @@ async function runCommand (t, interaction) {
 
 test('Context Commands: Setup Data', async (t) => {
   try {
+    // Ensure DB connection using the specific server for this test file
+    const mongoUri = mongoServer.getUri() // Get URI from this file's server
+    const { connectDB } = require('../lib/mongo') // Require connectDB here
+    await connectDB(mongoUri) // Connect specifically for this test block
+    t.pass('Ensured DB connection for Setup Data')
+
     // Clear potentially existing collection
     await mongoose.connection.db.dropCollection('repositories').catch(err => {
       if (err.codeName !== 'NamespaceNotFound') throw err

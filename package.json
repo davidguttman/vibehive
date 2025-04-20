@@ -17,7 +17,8 @@
   "dependencies": {
     "discord.js": "^14.18.0",
     "dotenv": "^16.5.0",
-    "mongodb": "^6.15.0"
+    "mongodb": "^6.15.0",
+    "mongoose": "^8.13.2"
   },
   "devDependencies": {
     "mongodb-memory-server": "^10.1.4",

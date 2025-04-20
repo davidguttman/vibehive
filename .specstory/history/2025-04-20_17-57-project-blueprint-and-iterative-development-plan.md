@@ -1755,6 +1755,590 @@ All done, Big D. Files `docs/prompts/04.md` through `docs/prompts/10.md` have be
 
 ---
 
+_**User**_
+
+do this for  11-20
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+Okay Big D, grinding through prompts 11 to 20 now.
+
+Creating `docs/prompts/11.md` with Prompt 11 content.
+
+
+---
+
+```diff
+- 
++ Task: Implement slash commands for managing context files.
++ Requirements:
++ 1.  Register three new slash commands:
++     -   `/files`: No options.
++     -   `/add`: One required string option `paths` (Description: Space-separated file paths).
++     -   `/drop`: One required string option `paths` (Description: Space-separated file paths).
++ 2.  In the interaction handler:
++     -   Handle `files` command:
++         -   Find the repository document for the `interaction.channelId`. If none, reply error.
++         -   Retrieve the `contextFiles` array.
++         -   Reply with the list of files, nicely formatted (e.g., in a code block or numbered list), or "No files currently in context."
++     -   Handle `add` command:
++         -   Find the repository document for the `interaction.channelId`. If none, reply error.
++         -   Get the `paths` string option. Split it by spaces to get an array of potential file paths. Filter out empty strings.
++         -   Perform basic validation (e.g., reject paths starting with `/` or containing `..`). Reply with error for invalid paths.
++         -   Update the repository document by adding the valid new paths to the `contextFiles` array (avoid duplicates). Use MongoDB's `$addToSet` with `$each`.
++         -   Reply confirming which files were added.
++     -   Handle `drop` command:
++         -   Find the repository document for the `interaction.channelId`. If none, reply error.
++         -   Get the `paths` string option. Split it by spaces.
++         -   Update the repository document by removing the specified paths from the `contextFiles` array. Use MongoDB's `$pull` with `$in`.
++         -   Reply confirming which files were removed (or indicate if they weren't found).
++ 3.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Create `test/contextCommands.test.js` using `tape`.
++ -   Use in-memory MongoDB. Seed with a test repository.
++ -   Mock the `interaction` object for each command.
++ -   Test `/files`: Assert the reply contains the expected files from the seeded document.
++ -   Test `/add`: Assert the DB document is updated correctly (files added, duplicates ignored). Test validation rejects bad paths. Verify reply message.
++ -   Test `/drop`: Assert the DB document is updated correctly (files removed). Verify reply message.
++ -   Test commands fail gracefully if no repo is configured for the channel.
++ -   Mock `interaction.reply`.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+Creating `docs/prompts/12.md` with Prompt 12 content.
+
+
+---
+
+```diff
+- 
++ Task: Pass the stored context files to the Python wrapper script.
++ Requirements:
++ 1.  Modify `aider_wrapper.py` (from Prompt 6):
++     -   Use `argparse` to accept multiple occurrences of a `--context-file` argument (`action='append'`).
++     -   Include the received context file paths in the JSON output for verification (e.g., add a field like `"received_context_files": [...]` to the output JSON).
++ 2.  Modify the Node.js `invokeAiderWrapper` function in `lib/pythonWrapper.js` (from Prompt 7):
++     -   Update the function signature to accept `invokeAiderWrapper({ prompt, contextFiles })`. `contextFiles` should be an array of strings.
++     -   When spawning the process, iterate through the `contextFiles` array and add a `--context-file` argument to the `spawn` arguments list for each file.
++ 3.  Modify the `@mention` handler (from Prompt 8):
++     -   When a repository is found, retrieve its `contextFiles` array from the document.
++     -   Pass this array to `invokeAiderWrapper` along with the prompt.
++ 4.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Modify `test/pythonWrapper.test.js`: Test calling `invokeAiderWrapper` with an array of `contextFiles`. Assert that the underlying `spawn` call receives the correct `--context-file` arguments. Mock `child_process.spawn` to inspect its arguments.
++ -   Modify `test/aider_wrapper.test.js`: Test running the Python script directly with multiple `--context-file` arguments. Assert the output JSON includes the `received_context_files` field with the correct paths.
++ -   Modify `test/mentionHandler.test.js`: Seed the DB repo with context files. Simulate a mention. Mock `invokeAiderWrapper` and assert it's called with the correct `contextFiles` array retrieved from the mock DB.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+Creating `docs/prompts/13.md` with Prompt 13 content.
+
+
+---
+
+```diff
+- 
++ Task: Create a Node.js module for AES encryption/decryption.
++ Requirements:
++ 1.  Create a new file, e.g., `lib/crypto.js`.
++ 2.  Require the built-in `node:crypto` module.
++ 3.  Read a master encryption key from the environment variable `ENCRYPTION_KEY`. Throw an error on startup if it's missing or too short (e.g., less than 32 characters for AES-256).
++ 4.  Export two functions:
++     -   `encrypt(text)`:
++         -   Generates a random Initialization Vector (IV) (16 bytes for AES).
++         -   Creates an AES-256-CBC cipher using the `ENCRYPTION_KEY` and the generated IV.
++         -   Encrypts the input `text`.
++         -   Returns a string combining the IV and the encrypted text (e.g., `iv.toString('hex') + ':' + encrypted.toString('hex')`).
++     -   `decrypt(text)`:
++         -   Takes the combined string from `encrypt`.
++         -   Splits the string by `:` to get the IV hex and encrypted text hex.
++         -   Creates an AES-256-CBC decipher using the `ENCRYPTION_KEY` and the retrieved IV (convert hex back to buffer).
++         -   Decrypts the encrypted text.
++         -   Returns the original decrypted string.
++ 5.  Handle potential errors during encryption/decryption (e.g., invalid input format for decrypt).
++ 6.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Create `test/crypto.test.js` using `tape`.
++ -   Set a dummy `ENCRYPTION_KEY` environment variable for the test process.
++ -   Test case 1: Encrypt a sample string. Decrypt the result. Assert the decrypted value matches the original sample.
++ -   Test case 2: Test `decrypt` with invalid input (e.g., wrong format, incorrect key implicitly). Assert it throws or returns an error/null.
++ -   Test startup check: Ensure the module throws an error if `ENCRYPTION_KEY` is not set or invalid when required.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+
+
+---
+
+Creating `docs/prompts/14.md` with Prompt 14 content.
+
+
+---
+
+```diff
+- 
++ Task: Add the `encryptedSshKey` field to the Repository schema.
++ Requirements:
++ 1.  Modify `models/Repository.js` (from Prompt 10).
++ 2.  Add a new field to the `repositorySchema`:
++     -   `encryptedSshKey`: { type: String } // Not required initially
++ 3.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Modify `test/repository.model.test.js` (from Prompt 10).
++ -   Test creating/updating a repository document with an `encryptedSshKey` value. Assert the value is stored and retrieved correctly.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+
+
+---
+
+Creating `docs/prompts/15.md` with Prompt 15 content.
+
+
+---
+
+```diff
+- 
++ Task: Modify the `/add-repo` command to accept, encrypt, and store an SSH private key attachment.
++ Requirements:
++ 1.  Modify the `/add-repo` slash command registration (Prompt 4) to add a required `attachment` option named `ssh_key`.
++ 2.  Modify the `/add-repo` command handler (Prompt 5):
++     -   After permission checks, retrieve the `ssh_key` attachment option from the interaction (`interaction.options.getAttachment('ssh_key')`).
++     -   Check the attachment's content type (e.g., `text/plain` or common key file types, though validation might be loose initially) and size if needed. Reply with an error if invalid.
++     -   Fetch the attachment content using its URL (`attachment.url`). Use `node-fetch` or Node's built-in `fetch` (v18+). Handle fetch errors.
++     -   Read the fetched content as text (the private key).
++     -   Import the `encrypt` function (Prompt 13). Encrypt the key text.
++     -   When saving/updating the `Repository` document, store the encrypted key string in the `encryptedSshKey` field.
++     -   Update the confirmation message to indicate the key was received and stored securely.
++ 3.  Add `node-fetch` if Node version < 18.
++ 4.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Modify `test/add-repo-command.test.js`.
++ -   Set a dummy `ENCRYPTION_KEY`.
++ -   Mock the `interaction` object, including `options.getAttachment` to return a mock attachment object with a URL.
++ -   Mock `fetch` to return a fake SSH key string when called with the mock URL.
++ -   Mock the `encrypt` function or use the real one.
++ -   Assert that the `Repository` model's save/update method is called with the correctly encrypted key data.
++ -   Test error handling for fetch failures and invalid attachments.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+
+
+---
+
+Creating `docs/prompts/16.md` with Prompt 16 content.
+
+
+---
+
+```diff
+- 
++ Task: Create Node.js functions for securely writing and deleting temporary SSH key files. (Deferring ownership/permissions until Docker setup).
++ Requirements:
++ 1.  Create a new file, e.g., `lib/secureKeys.js`.
++ 2.  Require built-in `node:fs/promises` and `node:path`.
++ 3.  Define a base directory for repositories (e.g., `/repos` or `process.cwd() + '/repos'` for local testing). Read from env var `REPO_BASE_DIR` if available, otherwise use a default.
++ 4.  Export an async function `writeTempKey({ repoName, keyContent })`:
++     -   Construct the target directory path: `path.join(baseDir, repoName, '.ssh')`.
++     -   Construct the target file path: `path.join(targetDir, 'id_rsa')`.
++     -   Ensure the target directory exists using `fs.mkdir(targetDir, { recursive: true })`.
++     -   Write the `keyContent` to the target file path using `fs.writeFile`. Set mode `0o600`.
++     -   Return the full path to the written key file.
++ 5.  Export an async function `deleteTempKey({ repoName })`:
++     -   Construct the target file path as above.
++     -   Delete the file using `fs.unlink`. Handle errors if the file doesn't exist (ignore).
++     -   Optionally: attempt to remove the `.ssh` directory if empty (`fs.rmdir`), but handle errors gracefully if not empty or non-existent.
++ 6.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Create `test/secureKeys.test.js` using `tape`.
++ -   Use a temporary directory for testing (e.g., using `os.tmpdir()` and a unique subdirectory). Set `REPO_BASE_DIR` env var for the test.
++ -   Test `writeTempKey`: Call it, assert the file is created in the correct temp location with the correct content and 600 permissions (check `fs.stat`).
++ -   Test `deleteTempKey`: Call `writeTempKey` then `deleteTempKey`. Assert the file is deleted. Call `deleteTempKey` again, assert no error occurs.
++ -   Clean up the temporary directory after tests.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+
+
+---
+
+Creating `docs/prompts/17.md` with Prompt 17 content.
+
+
+---
+
+```diff
+- 
++ Task: Decrypt the SSH key, write it temporarily, and pass GIT_SSH_COMMAND to the Python wrapper.
++ Requirements:
++ 1.  Modify `lib/pythonWrapper.js`'s `invokeAiderWrapper` function (from Prompt 12):
++     -   Update signature to accept `invokeAiderWrapper({ prompt, contextFiles, repoConfig })`, where `repoConfig` is the full repository document object from the DB.
++     -   Import `decrypt` (Prompt 13) and `writeTempKey`, `deleteTempKey` (Prompt 16).
++     -   Define `repoName` (e.g., derive from `repoConfig.repoUrl` or add a `repoName` field to the schema later). For now, maybe use `repoConfig._id.toString()`.
++     -   If `repoConfig.encryptedSshKey` exists:
++         -   Call `decrypt` to get the key content. Handle errors.
++         -   Call `writeTempKey` with the `repoName` and decrypted key. Store the returned key file path.
++         -   Construct the `GIT_SSH_COMMAND` string: `"ssh -i ${keyFilePath} -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no"`.
++         -   Add `GIT_SSH_COMMAND` to the `env` option passed to `child_process.spawn`. Make sure to merge with `process.env` so other variables are inherited.
++     -   Wrap the `spawn` call and the waiting for it in a `try...finally` block.
++     -   In the `finally` block, if a key was written, call `deleteTempKey({ repoName })`. Ensure deletion happens even if `spawn` or the script fails.
++ 2.  Modify the `@mention` handler (Prompt 8):
++     -   When a repository document is found, pass the *entire document* (`repoConfig`) to `invokeAiderWrapper`, not just context files.
++ 3.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Modify `test/pythonWrapper.test.js`.
++ -   Set dummy `ENCRYPTION_KEY` and `REPO_BASE_DIR`.
++ -   Create a mock `repoConfig` object including an `encryptedSshKey` (encrypt a dummy key).
++ -   Mock `writeTempKey` and `deleteTempKey`.
++ -   Call `invokeAiderWrapper` with the mock config.
++ -   Mock `child_process.spawn`. Assert it's called with the correct `env` option containing the `GIT_SSH_COMMAND` pointing to the expected temp key path.
++ -   Assert `writeTempKey` is called before `spawn`.
++ -   Assert `deleteTempKey` is called after `spawn` finishes/errors (mock `spawn` to simulate exit/error).
++ -   Ensure tests run via `npm test`. Clean up temp files/dirs. 
+```
+
+---
+
+
+
+---
+
+Creating `docs/prompts/18.md` with Prompt 18 content.
+
+
+---
+
+```diff
+- 
++ Task: Create an initial Dockerfile for the application.
++ Requirements:
++ 1.  Create a `Dockerfile` in the project root.
++ 2.  Use an official Node.js base image that also includes Python 3 (e.g., `node:XX-slim` might need Python installed, or find a combined image like `node:XX-bullseye`). Choose appropriate versions.
++ 3.  Install necessary OS packages: `git`, `sudo`, `python3`, `python3-pip`, `tree`.
++ 4.  Set up a working directory (e.g., `/app`).
++ 5.  Copy `package.json` and `package-lock.json`.
++ 6.  Run `npm ci --only=production` to install Node.js dependencies.
++ 7.  Create a `requirements.txt` file listing Python dependencies: `aider-chat`.
++ 8.  Copy `requirements.txt`.
++ 9.  Run `pip3 install --no-cache-dir -r requirements.txt`.
++ 10. Copy the rest of the application code (including `aider_wrapper.py`).
++ 11. Expose any necessary port (though the bot doesn't listen directly, maybe relevant later).
++ 12. Define the default command `CMD ["node", "index.js"]`.
++ Testing:
++ -   Build the Docker image: `docker build -t discord-aider-bot .`
++ -   Assert the build completes successfully.
++ -   (Manual) Run the container with necessary env vars (`DISCORD_TOKEN`, `MONGODB_URI`, `ENCRYPTION_KEY`). Check logs to see if the bot connects to Discord and MongoDB (it won't fully work yet due to missing users/permissions/dirs, but basic startup should function). 
+```
+
+---
+
+
+
+---
+
+Creating `docs/prompts/19.md` with Prompt 19 content.
+
+
+---
+
+```diff
+- 
++ Task: Modify the Dockerfile to create users and configure sudo.
++ Requirements:
++ 1.  Modify the `Dockerfile` (from Prompt 18):
++ 2.  Before copying application code:
++     -   Create a non-root group and user `appuser` (`groupadd -r appuser && useradd -r -g appuser -m -d /app -s /bin/bash appuser`). `/app` will be its home.
++     -   Create a group `coders`.
++     -   Create a pool of `coderX` users (e.g., `coder1` through `coder5`) belonging to the `coders` group, with home directories under `/repos` (e.g., `/repos/coder1`). Use a loop: `for i in $(seq 1 5); do useradd -r -g coders -m -d /repos/coder$i -s /bin/bash coder$i; done`.
++     -   Create the base `/repos` directory and set permissions allowing `appuser` to create subdirs later (`mkdir /repos && chown appuser:appuser /repos && chmod 755 /repos`). Or adjust permissions after creating coder homes.
++     -   Install `sudo` if not already done.
++     -   Configure passwordless `sudo` for `appuser`. Create a file in `/etc/sudoers.d/` (e.g., `appuser-privs`):
++         ```
++         # Allow appuser to run specific commands as coderX users
++         appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /usr/bin/python3 /app/aider_wrapper.py *
++         appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /usr/bin/git *
++         appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /bin/rm *
++         appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /bin/mkdir *
++         appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /bin/chown *
++         appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /bin/chmod *
++         # Add ls and tree if needed for commands
++         appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /bin/ls *
++         appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /usr/bin/tree *
++         ```
++         *Ensure paths to executables (`python3`, `git`, etc.) are correct for the base image.* Use `which git`, etc. inside a running container to verify.
++     -   Ensure the sudoers file has correct permissions (`chmod 0440 /etc/sudoers.d/appuser-privs`).
++ 3.  After copying code and setting up dependencies:
++     -   Change ownership of the `/app` directory to `appuser:appuser` (`chown -R appuser:appuser /app`).
++     -   Switch the user: `USER appuser`.
++     -   Set the `WORKDIR /app`.
++ 4.  The `CMD` remains the same.
++ Testing:
++ -   Rebuild the Docker image: `docker build -t discord-aider-bot .` Assert success.
++ -   Run the container interactively: `docker run -it --rm --user=appuser discord-aider-bot /bin/bash`.
++ -   Inside the container (as `appuser`):
++     -   Verify `whoami` returns `appuser`.
++     -   Verify `sudo -u coder1 whoami` returns `coder1`.
++     -   Verify `sudo -u coder1 /usr/bin/git --version` works.
++     -   Verify `sudo -u coder1 /bin/rm --version` works.
++     -   Verify `sudo -u coder1 touch /tmp/test` fails (as `touch` is not in sudoers).
++     -   Verify `/repos` exists and `coderX` home directories exist inside. 
+```
+
+---
+
+
+
+---
+
+Creating `docs/prompts/20.md` with Prompt 20 content.
+
+
+---
+
+```diff
+- 
++ Task: Assign a `coderX` user when adding a repository and store it.
++ Requirements:
++ 1.  Modify `models/Repository.js` (from Prompt 14):
++     -   Add a new field `assignedUserId`: { type: String }. Add an index if needed.
++ 2.  Modify the `/add-repo` command handler (from Prompt 15):
++     -   Define the pool of available user IDs (e.g., `['coder1', 'coder2', ..., 'coder5']`). This could be hardcoded or read from config/env.
++     -   Before saving the new repository document, query the `repositories` collection to find which `assignedUserId`s are already in use.
++     -   Select the first available ID from the pool that is not currently in use. If all are in use, reply with an error ("Maximum repository limit reached.").
++     -   Store the selected ID in the `assignedUserId` field of the new repository document.
++     -   Update the confirmation message to include the assigned user ID (for debugging/info).
++ 3.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Modify `test/add-repo-command.test.js`.
++ -   Use in-memory MongoDB.
++ -   Test adding the first repo: Assert `assignedUserId` is 'coder1' (or the first in the pool).
++ -   Seed the DB with repos assigned to 'coder1', 'coder2'. Test adding another: Assert `assignedUserId` is 'coder3'.
++ -   Seed the DB with all user IDs assigned. Test adding another: Assert an error reply is sent and no new document is created.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+Done, Big D. Files `docs/prompts/11.md` through `docs/prompts/20.md` have been created with their respective prompt content.
+
+---
+
+_**User**_
+
+now do it for 
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+Okay Big D, let's get prompts 21 through 37 into their files.
+
+Creating `docs/prompts/21.md` with Prompt 21 content.
+
+
+---
+
+```diff
+- 
++ Task: Execute the Python wrapper using `sudo` as the assigned `coderX` user and set the correct working directory. Adjust secure key handling for permissions.
++ Requirements:
++ 1.  Modify `lib/secureKeys.js` (from Prompt 16):
++     -   Update `writeTempKey` signature: `writeTempKey({ repoName, keyContent, ownerUserId })`.
++     -   Update `deleteTempKey` signature: `deleteTempKey({ repoName, ownerUserId })`. (Though owner might not be needed for delete if `appuser` can sudo rm).
++     -   Inside `writeTempKey`, after writing the file with mode 600:
++         -   Use `child_process.execFileSync` or `spawnSync` to run `sudo -u ${ownerUserId} chown ${ownerUserId}:${ownerUserId} ${targetFilePath}`.
++         -   Use `child_process.execFileSync` or `spawnSync` to run `sudo -u ${ownerUserId} chmod 600 ${targetFilePath}` (might be redundant but ensures).
++         -   Handle errors from these `sudo` commands.
++     -   *Alternative:* If `appuser` has sudo rights to write *as* `coderX`, could potentially use `sudo -u ${ownerUserId} dd of=${targetFilePath}` with stdin piping, but `chown/chmod` after writing as `appuser` is likely simpler.
++ 2.  Modify `lib/pythonWrapper.js`'s `invokeAiderWrapper` function (from Prompt 17):
++     -   Retrieve `assignedUserId` from the `repoConfig`.
++     -   Construct the repository path: `repoPath = path.join(baseDir, repoName)` (`baseDir` from Prompt 16). Ensure this directory will exist (Step 22 handles creation).
++     -   When calling `writeTempKey`, pass the `assignedUserId` as `ownerUserId`.
++     -   Modify the `spawn` call:
++         -   The command is now `sudo`.
++         -   Arguments are `['-u', assignedUserId, 'python3', '/app/aider_wrapper.py', '--prompt', prompt, ...]`.
++         -   Set the `cwd` option in `spawn` to `repoPath`.
++         -   Keep the `env` option for `GIT_SSH_COMMAND`.
++ 3.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Modify `test/secureKeys.test.js`: Update calls to include `ownerUserId`. Mock `child_process` to verify `sudo chown/chmod` commands are called correctly after file writing.
++ -   Modify `test/pythonWrapper.test.js`:
++     -   Provide a mock `repoConfig` including `assignedUserId`.
++     -   Assert `writeTempKey` is called with the correct `ownerUserId`.
++     -   Mock `child_process.spawn`. Assert it's called with `sudo -u <userId> python3 ...` and the correct `cwd` option set to the expected repo path.
++ -   These tests might require a Linux environment or careful mocking due to `sudo` and path assumptions.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+Creating `docs/prompts/22.md` with Prompt 22 content.
+
+
+---
+
+```diff
+- 
++ Task: Clone the repository using Git when `/add-repo` is invoked.
++ Requirements:
++ 1.  Modify the `/add-repo` command handler (from Prompt 20).
++ 2.  After assigning `assignedUserId` and before saving the `Repository` document (or perhaps after saving, but before replying success):
++     -   Import `decrypt` (Prompt 13), `writeTempKey`, `deleteTempKey` (Prompt 21), `path`, `fs/promises`, `child_process`.
++     -   Get `baseDir` (Prompt 16). Define `repoName` (e.g., from URL or ID). Construct `repoPath = path.join(baseDir, repoName)`.
++     -   Create the repository directory: `await fs.mkdir(repoPath, { recursive: true })`.
++     -   Run `sudo -u ${assignedUserId} chown ${assignedUserId}:${assignedUserId} ${repoPath}` using `execFileSync`.
++     -   Decrypt the SSH key (`repoConfig.encryptedSshKey`).
++     -   Call `writeTempKey({ repoName, keyContent, ownerUserId: assignedUserId })`. Store `keyFilePath`.
++     -   Construct `GIT_SSH_COMMAND` env var as in Prompt 17.
++     -   Execute the clone command: Use `spawn` or `execFile` for `sudo -u ${assignedUserId} git clone ${repoUrl} .`
++         -   Set the `cwd` to `repoPath`.
++         -   Pass the `GIT_SSH_COMMAND` in the `env` options (merged with `process.env`).
++         -   Capture `stdout` and `stderr`. Wait for completion.
++     -   Use a `try...finally` block around the clone operation.
++     -   In `finally`, call `deleteTempKey({ repoName, ownerUserId: assignedUserId })`.
++     -   If the `git clone` command fails (non-zero exit code or significant stderr), handle the error:
++         -   Log the error details (`stderr`).
++         -   Clean up: remove the created `repoPath` directory (`fs.rm(repoPath, { recursive: true, force: true })`).
++         -   Do *not* save the `Repository` document (if not already saved), or delete it if already saved.
++         -   Reply to the user with a specific error: "❌ Failed to clone repository. Please check the URL and SSH key permissions. Details logged."
++     -   If clone succeeds, proceed to save the `Repository` document (if not already saved) and reply with success.
++ 3.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Modify `test/add-repo-command.test.js`. This becomes more of an integration test.
++ -   Requires mocking `fs`, `child_process`, `decrypt`, `writeTempKey`, `deleteTempKey`.
++ -   Test success case: Mock `git clone` to exit 0. Assert `Repository.save` is called and success reply sent. Assert temp key is deleted. Assert repo dir and owner are set correctly.
++ -   Test clone failure case: Mock `git clone` to exit 1 with stderr. Assert `Repository.save` is *not* called (or doc is deleted), error reply is sent, temp key is deleted, repo dir is removed.
++ -   Use a test Git repository URL (can be fake).
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+Creating `docs/prompts/23.md` with Prompt 23 content.
+
+
+---
+
+```diff
+- 
++ Task: Integrate `aider` in Wrapper: Modify the Python wrapper to initialize and run the actual `aider` Coder.
++ Requirements:
++ 1.  Modify `aider_wrapper.py` (from Prompt 12):
++ 2.  Import necessary components from `aider`: `from aider.coders import Coder` and `from aider.io import InputOutput`.
++ 3.  In the main execution block:
++     -   Parse arguments (`--prompt`, `--context-file`).
++     -   Initialize `io = InputOutput(yes=True)` for non-interactive mode.
++     -   Initialize the coder: `coder = Coder(main_model=None, io=io, fnames=context_files)` (replace `context_files` with the parsed list from `--context-file`. Use default model for now). Handle potential initialization errors.
++     -   Wrap the execution in a `try...except` block.
++     -   Inside `try`: Run the coder: `coder.run(with_message=prompt)` (use `with_message` instead of positional).
++     -   Determine success/failure based on whether an exception occurred.
++     -   Construct the JSON output object (defined in spec 6.5):
++         -   Set `overall_status` to "success" or "failure".
++         -   Set `error` to the exception message if failure, else `null`.
++         -   Populate `events` array:
++             -   Initially, add a single `{"type": "status_message", "content": "Aider run completed."}` on success or `{"type": "status_message", "content": "Aider run failed."}` on failure. More detailed events later.
++             -   Consider capturing `coder.io.tool_output` or similar for basic text output and add a `text_response` event if available.
++     -   Print the JSON object to stdout.
++     -   If an exception occurred, print the stack trace to stderr.
++ 4.  Update `requirements.txt` if specific `aider-chat` version is needed.
++ Testing:
++ -   Modify `test/aider_wrapper.test.js`.
++ -   These tests become harder as they involve the real `aider` library.
++ -   Option 1 (Mocking `aider`): Use Python's `unittest.mock` within the test setup (e.g., via a helper script called by Node) to mock `aider.coders.Coder` and `coder.run`. Test that `Coder` is initialized with correct args (`fnames`, `io`) and `coder.run` is called with the prompt. Assert the JSON output reflects mock success/failure.
++ -   Option 2 (Basic Integration): Run the script against a *minimal* test case. Provide a simple prompt and maybe a dummy context file. Assert the script exits cleanly (code 0) and produces valid JSON output (structure check), without necessarily validating `aider`'s specific behavior yet. This requires `aider-chat` to be installed where tests run.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+
+
+---
+
+Creating `docs/prompts/24.md` with Prompt 24 content.
+
+
+---
+
+```diff
+- 
++ Task: Detect File Changes: Enhance the Python wrapper to detect file changes made by `aider` and include them in the output.
++ Requirements:
++ 1.  Modify `aider_wrapper.py` (from Prompt 23):
++ 2.  Requires `gitpython` library: Add `GitPython` to `requirements.txt` and install it (`pip install`).
++ 3.  Import `git`.
++ 4.  Before `coder.run()`:
++     -   Initialize `repo = git.Repo('.')` (assuming cwd is the repo root).
++     -   Get the set of currently tracked files known to Git: `initial_files = set(item.path for item in repo.index.iter_blobs())`.
++     -   Get the initial status/diff to detect modifications to tracked files: `initial_diff = repo.index.diff(None)` (unstaged changes). Store modified paths.
++ 5.  After `coder.run()` completes successfully:
++     -   Get the set of tracked files *after* the run: `final_files = set(item.path for item in repo.index.iter_blobs())`. This seems incorrect, need to check untracked/staged files too.
++     -   *Alternative Approach:* Use `repo.git.status('--porcelain')` before and after `coder.run`. Parse the output to determine added (`??`), deleted (` D`), modified (` M`), etc. files. This is likely more reliable.
++     -   Compare the before/after status.
++     -   Iterate through detected changes:
++         -   For modified/added files: Read the new content (`open(filepath).read()`). Generate a diff if possible/required by spec (`repo.git.diff('HEAD', filepath)` might work *after* staging, or compare content manually).
++         -   For deleted files: Note the filename.
++     -   In the JSON output's `events` array:
++         -   For each change, add a `file_change` event object:
++             ```json
++             {
++               "type": "file_change",
++               "filename": "path/relative/to/repo/root.py",
++               "change_type": "modified" | "added" | "deleted",
++               "content": "...", // Full new content for added/modified, null for deleted
++               "diff": "..."   // Standard diff output for modified, null otherwise
++             }
++             ```
++ 6.  Refine the `overall_status` based on whether changes occurred. Add status messages.
++ Testing:
++ -   Modify `test/aider_wrapper.test.js`. This requires a test environment with a dummy Git repository.
++ -   Setup: Before running the wrapper script in the test, create a temporary directory, initialize git (`git init`), add and commit a file (`dummy.txt`).
++ -   Test case 1 (Modification): Run the wrapper script (mocking `coder.run` to simulate modifying `dummy.txt`). Assert the output JSON contains a `file_change` event for `dummy.txt` with `change_type: "modified"`, and includes `content` and/or `diff`.
++ -   Test case 2 (Addition): Mock `coder.run` to simulate creating a new file `new.txt`. Assert a `file_change` event for `new.txt` with `change_type: "added"` and `content`.
++ -   Test case 3 (Deletion): Mock `coder.run` to simulate deleting `dummy.txt`. Assert a `file_change` event for `dummy.txt` with `change_type: "deleted"`.
++ -   Clean up the temporary git directory.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+
+
+---
+
+Creating `docs/prompts/25.md` with Prompt 25 content.
+
+
+---
+
+Cancelled
+
+---
+
 
 
 ---

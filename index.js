@@ -1,14 +1,18 @@
 // index.js
 
 // 1. Package Requires
-require('dotenv').config() // Load environment variables from .env file
+// require('dotenv').config() // Load environment variables from .env file // Removed
 const { Client, GatewayIntentBits, Events, REST, Routes } = require('discord.js')
 
-// 2. Local Requires (None for this simple example)
+// 2. Local Requires
+const config = require('./config') // Use the config module // Added
+const { connectDB } = require('./lib/mongo') // Import connectDB // Added
 
 // 3. Constants
-const BOT_TOKEN = process.env.DISCORD_TOKEN
-const CLIENT_ID = process.env.DISCORD_CLIENT_ID // Add your Client ID to .env
+// const BOT_TOKEN = process.env.DISCORD_TOKEN // Removed
+// const CLIENT_ID = process.env.DISCORD_CLIENT_ID // Add your Client ID to .env // Removed
+// Use constants from config // Added
+const { discordToken, discordClientId } = config // Added
 
 // Simple command definition
 const commands = [
@@ -20,15 +24,16 @@ const commands = [
 
 // 4. Immediately Run Code
 
-// Check if token is provided
-if (!BOT_TOKEN) {
-  console.error('Error: DISCORD_TOKEN is required in your .env file')
-  process.exit(1)
-}
-if (!CLIENT_ID) {
-  console.error('Error: DISCORD_CLIENT_ID is required in your .env file')
-  process.exit(1)
-}
+// Check if token is provided // Removed block
+// if (!BOT_TOKEN) { // Removed
+//   console.error('Error: DISCORD_TOKEN is required in your .env file') // Removed
+//   process.exit(1) // Removed
+// } // Removed
+// if (!CLIENT_ID) { // Removed
+//   console.error('Error: DISCORD_CLIENT_ID is required in your .env file') // Removed
+//   process.exit(1) // Removed
+// } // Removed
+// Config module already handles validation // Added
 
 // Discord Client Setup
 const client = new Client({
@@ -39,7 +44,8 @@ const client = new Client({
 })
 
 // REST API setup for command registration
-const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
+// const rest = new REST({ version: '10' }).setToken(BOT_TOKEN); // Removed
+const rest = new REST({ version: '10' }).setToken(discordToken); // Added
 
 // Function to register slash commands
 (async () => {
@@ -47,7 +53,8 @@ const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
     console.log('Started refreshing application (/) commands.')
 
     await rest.put(
-      Routes.applicationCommands(CLIENT_ID), // Register globally - takes time to propagate
+      // Routes.applicationCommands(CLIENT_ID), // Register globally - takes time to propagate // Removed
+      Routes.applicationCommands(discordClientId), // Register globally - takes time to propagate // Added
       // Use Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID) for faster testing in a specific server
       { body: commands }
     )
@@ -88,13 +95,25 @@ client.on(Events.InteractionCreate, async interaction => {
   // Add handlers for other commands here
 })
 
-// Login to Discord
-client.login(BOT_TOKEN)
-  .then(() => console.log('Login successful!'))
-  .catch(error => {
-    console.error('Login failed:', error)
-    process.exit(1) // Exit if login fails
-  })
+// Login to Discord and Connect to DB // Added block
+async function startBot () { // Added
+  try { // Added
+    await connectDB() // Connect to DB first // Added
+    await client.login(discordToken) // Then login to Discord // Added
+    console.log('Login successful!') // Added
+  } catch (error) { // Added
+    console.error('Bot failed to start:', error) // Added
+    process.exit(1) // Added
+  } // Added
+} // Added
+
+startBot() // Call the async start function // Added
+// Removed block
+// .then(() => console.log('Login successful!'))
+// .catch(error => {
+//   console.error('Login failed:', error)
+//   process.exit(1) // Exit if login fails
+// })
 
 // 5. Module Exports (None needed for this file)
 

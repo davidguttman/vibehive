@@ -40,32 +40,41 @@ We need to add the MongoDB connection details to our environment configuration.
 
 ## Step 3: Create Configuration Module (`config.js`)
 
-Let's create a simple module to load and export our configuration values.
+Let's create a module to load and export our configuration values, ensuring it behaves correctly in different environments (like development vs. testing).
+
+**Important:** Tests should *not* depend on your real `.env` file. They need to be self-contained. We will ensure our configuration loader only tries to load the `.env` file and validate its contents when *not* running in a test environment.
 
 Create a file named `config.js` in the project root:
 ```javascript
 // config.js
 
 // 1. Package Requires
-require('dotenv').config() // Ensure environment variables are loaded
+// Only load .env file in non-test environments
+if (process.env.NODE_ENV !== 'test') {
+  require('dotenv').config()
+}
 
 // 2. Local Requires (None)
 
 // 3. Constants
 const config = {
-  discordToken: process.env.DISCORD_TOKEN,
-  discordClientId: process.env.DISCORD_CLIENT_ID,
-  mongoURI: process.env.MONGODB_URI,
-  mongoDBName: process.env.MONGODB_DB_NAME
+  // Provide default empty strings for test environment if needed,
+  // although tests should ideally provide their own specific config (like the DB URI)
+  discordToken: process.env.DISCORD_TOKEN || '',
+  discordClientId: process.env.DISCORD_CLIENT_ID || '',
+  mongoURI: process.env.MONGODB_URI || '',
+  mongoDBName: process.env.MONGODB_DB_NAME || ''
 }
 
-// 4. Immediately Run Code (Validation)
-const requiredEnvVars = ['discordToken', 'discordClientId', 'mongoURI', 'mongoDBName']
-const missingEnvVars = requiredEnvVars.filter(key => !config[key])
+// 4. Immediately Run Code (Validation - only in non-test environments)
+if (process.env.NODE_ENV !== 'test') {
+  const requiredEnvVars = ['discordToken', 'discordClientId', 'mongoURI', 'mongoDBName']
+  const missingEnvVars = requiredEnvVars.filter(key => !config[key])
 
-if (missingEnvVars.length > 0) {
-  console.error(`Error: Missing required environment variables: ${missingEnvVars.join(', ')}`)
-  process.exit(1)
+  if (missingEnvVars.length > 0) {
+    console.error(`Error: Missing required environment variables: ${missingEnvVars.join(', ')}`)
+    process.exit(1)
+  }
 }
 
 // 5. Module Exports
@@ -73,7 +82,7 @@ module.exports = config
 
 // 6. Functions (None)
 ```
-This module loads environment variables, validates that the required ones are present, and exports them in an object.
+This module now conditionally loads `dotenv`. It reads environment variables but only performs the strict validation (checking if required variables are present) when `NODE_ENV` is *not* set to `'test'`. This prevents tests from failing just because a developer `.env` file isn't present or complete.
 
 ## Step 4: Create Database Connection Module (`lib/mongo.js`)
 
@@ -258,6 +267,8 @@ Create `test/db.test.js`:
 // test/db.test.js
 const test = require('tape')
 const { MongoMemoryServer } = require('mongodb-memory-server')
+// Set NODE_ENV to 'test' before requiring modules that check it
+process.env.NODE_ENV = 'test'
 const { connectDB, getDB, closeDB } = require('../lib/mongo') // Adjust path
 
 let mongoServer
@@ -272,12 +283,13 @@ test('MongoDB Connection Setup', async (t) => {
 })
 
 test('connectDB Function', async (t) => {
-  const uri = mongoServer.getUri()
+  const uri = mongoServer.getUri() // Use the in-memory URI
   const testDbName = 'test-db'
   let dbInstance
 
   try {
-    dbInstance = await connectDB(uri, testDbName) // Pass test URI and DB name
+    // Explicitly pass the test URI and DB name from the test setup
+    dbInstance = await connectDB(uri, testDbName)
     t.ok(dbInstance, 'connectDB should return a DB instance')
     t.equal(dbInstance.databaseName, testDbName, 'DB instance should have the correct name')
 
@@ -295,7 +307,7 @@ test('connectDB Function', async (t) => {
 })
 
 test('getDB Function', async (t) => {
-  const uri = mongoServer.getUri()
+  const uri = mongoServer.getUri() // Use the in-memory URI
   const testDbName = 'test-getdb'
 
   // Test getDB before connection
@@ -310,6 +322,7 @@ test('getDB Function', async (t) => {
   // Test getDB after connection
   let dbInstance
   try {
+    // Explicitly pass the test URI and DB name
     await connectDB(uri, testDbName) // Connect first
     dbInstance = getDB()
     t.ok(dbInstance, 'getDB should return a DB instance after connection')
@@ -335,16 +348,12 @@ test('MongoDB Connection Teardown', async (t) => {
   }
   t.end()
 })
-
 ```
 
-**Explanation of `test/db.test.js`:**
-1.  Requires `tape`, `MongoMemoryServer`, and our `lib/mongo` functions.
-2.  Uses `MongoMemoryServer.create()` to start an instance before tests run.
-3.  Tests `connectDB` by passing the in-memory server's URI.
-4.  Tests `getDB` both before and after a connection.
-5.  Uses `closeDB` to clean up the connection after each relevant test.
-6.  Uses `mongoServer.stop()` in a final teardown test to shut down the in-memory database.
+**Explanation of `test/db.test.js` changes:**
+1.  **`process.env.NODE_ENV = 'test'`**: We explicitly set the environment to `'test'` *before* requiring `lib/mongo`, which in turn requires `config.js`. This ensures `config.js` knows it's in a test environment and skips loading `.env` and validating variables.
+2.  **Passing Test URI/DB Name**: The tests now explicitly pass the `uri` obtained from `MongoMemoryServer` and a specific `testDbName` to `connectDB`. This makes the test independent of any configuration in `config.js` or `.env`.
+3.  The rest of the logic remains the same: start server, test connection, test retrieval, clean up connection, stop server.
 
 ## Step 8: Run Tests
 
@@ -353,9 +362,8 @@ Make sure the database connection logic works as expected and the tests exit cle
 ```bash
 npm test
 ```
-
-You should see output from both `ping.test.js` and `db.test.js`, indicating all tests passed.
+This time, the tests should pass regardless of whether you have a complete `.env` file, because the test environment is properly isolated. You should see output from both `ping.test.js` and `db.test.js`, indicating all tests passed.
 
 ---
 
-Congratulations! You have successfully integrated MongoDB connection handling into your Discord bot. The bot now connects to the database on startup, and you have a way to access the database instance (`getDB()`) for future use in commands and features. You also have tests to verify the connection logic using an in-memory database. 
+Congratulations! You have successfully integrated MongoDB connection handling into your Discord bot **with proper environment separation for testing**. The bot now connects to the database on startup using `.env` for development/production, while tests use their own configuration (the in-memory server) without relying on `.env`.

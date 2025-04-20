@@ -16,9 +16,11 @@
   "license": "MIT",
   "dependencies": {
     "discord.js": "^14.18.0",
-    "dotenv": "^16.5.0"
+    "dotenv": "^16.5.0",
+    "mongodb": "^6.15.0"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^10.1.4",
     "standard": "^17.1.2",
     "tape": "^5.9.0"
   }

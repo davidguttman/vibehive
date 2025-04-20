@@ -21,6 +21,9 @@ const repositorySchema = new mongoose.Schema({
   contextFiles: {
     type: [String],
     default: []
+  },
+  encryptedSshKey: {
+    type: String
   }
   // Add more fields as needed later (e.g., last commit checked, owner, etc.)
 }, {

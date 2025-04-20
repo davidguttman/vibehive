@@ -132,6 +132,61 @@ test('Repository Model - Update contextFiles', async (t) => {
   }
 })
 
+test('Repository Model - Create and Save with SSH Key', async (t) => {
+  const repoData = {
+    repoUrl: 'git@github.com:user/test-repo-ssh.git',
+    discordChannelId: 'channel-ssh-123',
+    contextFiles: ['README.md'],
+    encryptedSshKey: 'dummy-encrypted-key-data' // Add the new field
+  }
+  const repository = new Repository(repoData)
+  let savedRepo
+  try {
+    savedRepo = await repository.save()
+
+    t.ok(savedRepo._id, 'Repository should be saved with an ID')
+    t.equal(savedRepo.repoUrl, repoData.repoUrl, 'repoUrl should match')
+    t.equal(savedRepo.discordChannelId, repoData.discordChannelId, 'discordChannelId should match')
+    t.deepEqual(savedRepo.contextFiles.slice(), repoData.contextFiles, 'contextFiles should match')
+    t.equal(savedRepo.encryptedSshKey, repoData.encryptedSshKey, 'encryptedSshKey should match') // Assert the new field
+  } catch (err) {
+    t.fail('Should not fail saving repo with SSH key')
+    console.error(err)
+  } finally {
+    if (savedRepo) await Repository.findByIdAndDelete(savedRepo._id)
+    t.end()
+  }
+})
+
+test('Repository Model - Find and Update with SSH Key', async (t) => {
+  const initialData = {
+    repoUrl: 'git@github.com:user/update-ssh.git',
+    discordChannelId: 'channel-ssh-456',
+    encryptedSshKey: 'initial-key'
+  }
+  let repo
+  try {
+    repo = await new Repository(initialData).save()
+    t.pass('Created initial repo for update test')
+
+    const foundRepo = await Repository.findById(repo._id)
+    t.ok(foundRepo, 'Repository should be found by ID')
+    t.equal(foundRepo.encryptedSshKey, initialData.encryptedSshKey, 'Initial SSH key should match')
+
+    const updatedKey = 'updated-encrypted-key-data'
+    foundRepo.encryptedSshKey = updatedKey
+    const updatedRepo = await foundRepo.save()
+
+    t.equal(updatedRepo.encryptedSshKey, updatedKey, 'encryptedSshKey should be updated')
+  } catch (err) {
+    t.fail('Should not fail finding/updating repo with SSH key')
+    console.error(err)
+  } finally {
+    if (repo) await Repository.findByIdAndDelete(repo._id)
+    t.end()
+  }
+})
+
 test('** Teardown Mongoose Connection **', async (t) => {
   await closeDB() // Disconnect Mongoose
   await mongoServer.stop() // Stop the in-memory server

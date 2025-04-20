@@ -189,6 +189,7 @@ async function handleMessageCreate (client, message) {
     // 4. Get channelId
     const channelId = message.channelId
 
+    let processingMessage // Declare outside try
     try {
       // Ensure DB is connected (assuming connectDB handles multiple calls safely)
       await connectDB()
@@ -205,27 +206,73 @@ async function handleMessageCreate (client, message) {
       console.log(`Found repository config for channel ${channelId}: ${repoConfig.repoUrl}`)
 
       // Add some user feedback that the request is being processed
-      const processingMessage = await message.reply('Processing your request...').catch(console.error)
+      processingMessage = await message.reply('Processing your request...').catch(console.error)
 
       // 6. Invoke the Python wrapper
       const result = await invokeAiderWrapper({ prompt }) // Pass prompt in options object
 
-      // 7. Process the result (logging for now)
-      if (result.status === 'success') {
-        console.log('Python wrapper succeeded:', result.data)
-        const responseContent = result.data?.events?.[0]?.content || 'Received a response, but couldn\'t extract content.'
-        // Use message.channel.send for follow-up, don't rely on the reply object
-        message.channel.send(`**Response for @${message.author.username}:**\n\`\`\`\n${responseContent}\n\`\`\``).catch(console.error)
+      // 7. Process the result (Revised logic)
+      if (result.status === 'failure') {
+        console.error('Python wrapper execution failed:', { error: result.error, stdout: result.stdout })
+        message.reply('❌ An error occurred while processing your request. Details logged.').catch(console.error)
+      } else if (result.status === 'success') {
+        // Access parsed JSON data
+        const data = result.data
+        if (!data) {
+          console.error('Python wrapper succeeded but returned no data.')
+          message.reply('❌ An error occurred: No data received from the process.').catch(console.error)
+        } else if (data.overall_status === 'failure') {
+          console.error('Python script reported failure:', data.error)
+          message.reply('❌ An error occurred within the script execution. Details logged.').catch(console.error)
+        } else if (data.overall_status === 'success') {
+          // Find the text response event
+          const textEvent = data.events?.find(event => event.type === 'text_response')
+
+          if (textEvent && textEvent.content) {
+            // Reply with the content
+            console.log('Sending text response to Discord:', textEvent.content)
+            // Split long messages if necessary (Discord limit is 2000 chars)
+            const content = textEvent.content
+            const maxLength = 1950 // Leave room for formatting/mention
+            if (content.length > maxLength) {
+              // Simple split, could be improved later
+              const chunks = []
+              for (let i = 0; i < content.length; i += maxLength) {
+                chunks.push(content.substring(i, i + maxLength))
+              }
+              message.reply(`**Response for @${message.author.username}:** (Part 1)`).catch(console.error)
+              for (let i = 0; i < chunks.length; i++) {
+                message.channel.send(`\`\`\`\n${chunks[i]}\n\`\`\` ${i + 1 < chunks.length ? `(Part ${i + 2})` : ''}`).catch(console.error)
+              }
+            } else {
+              message.reply(`**Response for @${message.author.username}:**\n\`\`\`\n${content}\n\`\`\``).catch(console.error)
+            }
+          } else {
+            // No text response found
+            console.log('Script execution succeeded, but no text_response event found.')
+            message.reply('✅ Process completed successfully, but no text output was generated.').catch(console.error)
+          }
+        } else {
+          // Unknown overall_status
+          console.warn('Unknown overall_status received:', data.overall_status)
+          message.reply('❓ The process finished with an unknown status.').catch(console.error)
+        }
       } else {
-        console.error('Python wrapper failed:', result.error)
-        message.channel.send(`There was an error processing your request for @${message.author.username}: ${result.error}`).catch(console.error)
+        // Unknown wrapper status
+        console.error('Unknown status received from Python wrapper:', result.status)
+        message.reply('❌ An unexpected error occurred while processing your request.').catch(console.error)
       }
+
       // Optionally delete the 'Processing...' message if it exists
       if (processingMessage) {
         processingMessage.delete().catch(console.error)
       }
     } catch (error) {
       console.error('Error handling mention:', error)
+      // Ensure 'processingMessage' is accessible if declared outside try
+      if (typeof processingMessage !== 'undefined' && processingMessage) {
+        processingMessage.delete().catch(console.error) // Attempt deletion even on error
+      }
       try {
         message.reply('Sorry, something went wrong while processing your request.').catch(console.error)
       } catch (replyError) {

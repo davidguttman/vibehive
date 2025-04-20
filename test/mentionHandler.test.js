@@ -140,25 +140,30 @@ test('Mention Handler Tests', async (t) => {
     sandbox.restore()
   })
 
-  t.test('Mention, Repo Found, Wrapper Called Successfully', async (st) => {
-    st.plan(5)
+  t.test('Mention, Repo Found, Wrapper Called Successfully (Text Response)', async (st) => {
+    st.plan(4)
     const sandbox = sinon.createSandbox()
     // Arrange
-    const mockSuccessResult = { status: 'success', data: { events: [{ type: 'text_response', content: 'Mocked AI response' }] } }
+    const mockSuccessResult = {
+      status: 'success',
+      data: {
+        overall_status: 'success',
+        events: [{ type: 'text_response', content: 'Mocked AI response' }]
+      }
+    }
     const mockInvokeAiderWrapper = sandbox.stub().resolves(mockSuccessResult)
     const { handleMessageCreate } = proxyquire('../index', {
       './lib/pythonWrapper': { invokeAiderWrapper: mockInvokeAiderWrapper }
     })
     const deleteStub = sandbox.stub().resolves()
     const replyStub = sandbox.stub().resolves({ delete: deleteStub })
-    const sendStub = sandbox.stub().resolves()
     const mockMessage = {
       author: { bot: false, id: 'user-id', tag: 'User#1234', username: 'TestUser' },
       mentions: { has: (user) => user.id === mockClient.user.id },
       content: `<@${mockClient.user.id}> do the thing`,
       channelId: 'channel-with-repo',
       reply: replyStub,
-      channel: { send: sendStub, id: 'channel-with-repo' }
+      channel: { send: sandbox.fake(), id: 'channel-with-repo' }
     }
 
     // Act
@@ -166,33 +171,31 @@ test('Mention Handler Tests', async (t) => {
     await new Promise(resolve => setImmediate(resolve))
 
     // Assert
-    st.ok(replyStub.calledOnceWith('Processing your request...'), 'Should send initial "Processing" reply')
-    st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
-    st.ok(mockInvokeAiderWrapper.calledWith({ prompt: 'do the thing' }), 'invokeAiderWrapper called with correct prompt')
-    st.ok(sendStub.calledOnceWithMatch(/Mocked AI response/), 'channel.send should be called with wrapper result')
+    st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
+    st.ok(mockInvokeAiderWrapper.calledOnceWith({ prompt: 'do the thing' }), 'invokeAiderWrapper called with correct prompt')
+    st.ok(replyStub.calledWithMatch(/\*\*Response for @TestUser:\*\*/), 'Should send final response reply')
     st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
     sandbox.restore()
   })
 
-  t.test('Mention, Repo Found, Wrapper Fails', async (st) => {
+  t.test('Mention, Repo Found, Wrapper Fails (Execution Error)', async (st) => {
     st.plan(4)
     const sandbox = sinon.createSandbox()
     // Arrange
-    const mockFailureResult = { status: 'failure', error: 'Simulated python error' }
+    const mockFailureResult = { status: 'failure', error: 'Simulated python execution error', stdout: 'stdout info' }
     const mockInvokeAiderWrapper = sandbox.stub().resolves(mockFailureResult)
     const { handleMessageCreate } = proxyquire('../index', {
       './lib/pythonWrapper': { invokeAiderWrapper: mockInvokeAiderWrapper }
     })
     const deleteStub = sandbox.stub().resolves()
     const replyStub = sandbox.stub().resolves({ delete: deleteStub })
-    const sendStub = sandbox.stub().resolves()
     const mockMessage = {
       author: { bot: false, id: 'user-id', tag: 'User#1234', username: 'FailUser' },
       mentions: { has: (user) => user.id === mockClient.user.id },
       content: `<@${mockClient.user.id}> trigger failure`,
       channelId: 'channel-with-repo',
       reply: replyStub,
-      channel: { send: sendStub, id: 'channel-with-repo' }
+      channel: { send: sandbox.fake(), id: 'channel-with-repo' }
     }
 
     // Act
@@ -200,9 +203,86 @@ test('Mention Handler Tests', async (t) => {
     await new Promise(resolve => setImmediate(resolve))
 
     // Assert
-    st.ok(replyStub.calledOnceWith('Processing your request...'), 'Should send initial "Processing" reply')
+    st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
     st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
-    st.ok(sendStub.calledOnceWithMatch(/error processing your request for @FailUser: Simulated python error/i), 'channel.send should be called with error message')
+    st.ok(replyStub.calledWithMatch(/❌ An error occurred while processing your request\. Details logged\./), 'Should reply with generic wrapper error message')
+    st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
+    sandbox.restore()
+  })
+
+  t.test('Mention, Repo Found, Script Fails (overall_status: failure)', async (st) => {
+    st.plan(4)
+    const sandbox = sinon.createSandbox()
+    // Arrange
+    const mockScriptFailureResult = {
+      status: 'success',
+      data: {
+        overall_status: 'failure',
+        error: 'Simulated script error within Python',
+        events: []
+      }
+    }
+    const mockInvokeAiderWrapper = sandbox.stub().resolves(mockScriptFailureResult)
+    const { handleMessageCreate } = proxyquire('../index', {
+      './lib/pythonWrapper': { invokeAiderWrapper: mockInvokeAiderWrapper }
+    })
+    const deleteStub = sandbox.stub().resolves()
+    const replyStub = sandbox.stub().resolves({ delete: deleteStub })
+    const mockMessage = {
+      author: { bot: false, id: 'user-id', tag: 'User#1234', username: 'ScriptFailUser' },
+      mentions: { has: (user) => user.id === mockClient.user.id },
+      content: `<@${mockClient.user.id}> trigger script failure`,
+      channelId: 'channel-with-repo',
+      reply: replyStub,
+      channel: { send: sandbox.fake(), id: 'channel-with-repo' }
+    }
+
+    // Act
+    await handleMessageCreate(mockClient, mockMessage)
+    await new Promise(resolve => setImmediate(resolve))
+
+    // Assert
+    st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
+    st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
+    st.ok(replyStub.calledWithMatch(/❌ An error occurred within the script execution\. Details logged\./), 'Should reply with generic script error message')
+    st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
+    sandbox.restore()
+  })
+
+  t.test('Mention, Repo Found, Success but No Text Response', async (st) => {
+    st.plan(4)
+    const sandbox = sinon.createSandbox()
+    // Arrange
+    const mockNoTextResult = {
+      status: 'success',
+      data: {
+        overall_status: 'success',
+        events: [{ type: 'other_event', detail: 'something happened' }]
+      }
+    }
+    const mockInvokeAiderWrapper = sandbox.stub().resolves(mockNoTextResult)
+    const { handleMessageCreate } = proxyquire('../index', {
+      './lib/pythonWrapper': { invokeAiderWrapper: mockInvokeAiderWrapper }
+    })
+    const deleteStub = sandbox.stub().resolves()
+    const replyStub = sandbox.stub().resolves({ delete: deleteStub })
+    const mockMessage = {
+      author: { bot: false, id: 'user-id', tag: 'User#1234', username: 'NoTextUser' },
+      mentions: { has: (user) => user.id === mockClient.user.id },
+      content: `<@${mockClient.user.id}> trigger no text output`,
+      channelId: 'channel-with-repo',
+      reply: replyStub,
+      channel: { send: sandbox.fake(), id: 'channel-with-repo' }
+    }
+
+    // Act
+    await handleMessageCreate(mockClient, mockMessage)
+    await new Promise(resolve => setImmediate(resolve))
+
+    // Assert
+    st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
+    st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
+    st.ok(replyStub.calledWithMatch(/✅ Process completed successfully, but no text output was generated\./), 'Should reply with "success, no text" message')
     st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
     sandbox.restore()
   })

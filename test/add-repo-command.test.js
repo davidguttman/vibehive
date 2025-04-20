@@ -3,30 +3,56 @@ const test = require('tape')
 const sinon = require('sinon')
 const { PermissionsBitField } = require('discord.js')
 const { MongoMemoryServer } = require('mongodb-memory-server')
+const mongoose = require('mongoose') // Required for ObjectId and Error checking
 process.env.NODE_ENV = 'test'
 // const mongoose = require('mongoose') // Removed - Unused in this file
 const Repository = require('../models/Repository')
 const { connectDB, closeDB } = require('../lib/mongo')
+const interactionCreateHandler = require('../events/interactionCreate') // Import the actual handler
+const { encrypt, decrypt } = require('../lib/crypto') // Import crypto functions
 
 // We need to simulate the part of index.js that handles interactions
 // Normally, you might extract the handler logic into its own module,
 // but for this tutorial, we'll define a simplified mock handler.
 
-// Mock Interaction Object Factory
+// --- Global Mocks --- START ---
+let originalFetch
+const mockFetch = async (url) => {
+  console.log(`TEST: Mock fetch called with URL: ${url}`)
+  if (url === 'http://mock-key-url.com/valid-key') {
+    return {
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: async () => '-----BEGIN RSA PRIVATE KEY-----\nMOCK KEY CONTENT\n-----END RSA PRIVATE KEY-----'
+    }
+  } else if (url === 'http://mock-key-url.com/fetch-error') {
+    return { ok: false, status: 404, statusText: 'Not Found' }
+  } else if (url === 'http://mock-key-url.com/empty-key') {
+    return { ok: true, status: 200, statusText: 'OK', text: async () => '' }
+  }
+  // Fallback for unexpected URLs
+  return { ok: false, status: 400, statusText: 'Bad Request (Mock)' }
+  // throw new Error(`Unexpected fetch URL in mock: ${url}`);
+}
+// --- Global Mocks --- END ---
+
+// Mock Interaction Object Factory - Enhanced for attachments
 function createMockInteraction (options = {}) {
   const {
-    commandName = 'add-repo',
+    commandName = 'addrepo',
     isChatInputCommand = true,
     inGuild = true,
     userTag = 'testuser#1234',
     channelId = 'channel-test-id',
+    guildId = 'guild-test-id', // Added guildId
     isAdmin = false,
     repoUrl = 'https://github.com/test/repo.git',
+    attachment = null, // { name: 'id_rsa', url: 'http://...', contentType: '...' }
     replied = false,
     deferred = false
   } = options
 
-  // Use Sinon stubs for reply/followUp to track calls
   const replyStub = sinon.stub().resolves()
   const followUpStub = sinon.stub().resolves()
   const deferReplyStub = sinon.stub().resolves()
@@ -37,114 +63,89 @@ function createMockInteraction (options = {}) {
     inGuild: () => inGuild,
     user: { tag: userTag },
     channelId,
+    guildId,
     member: {
-      // Simulate the permissions check
       permissions: {
         has: (permission) => {
+          // Allow checking for specific permissions like Administrator
+          if (typeof permission === 'string') {
+            return permission === 'Administrator' && isAdmin
+          }
+          // Handle PermissionsBitField instances
           return permission === PermissionsBitField.Flags.Administrator && isAdmin
         }
       }
     },
     options: {
-      // Simulate getting the option value
       getString: (name) => {
-        return name === 'url' ? repoUrl : null
+        return name === 'repository' ? repoUrl : null // Adjusted name to 'repository'
+      },
+      getAttachment: (name) => {
+        return name === 'ssh_key' ? attachment : null
       }
     },
     reply: replyStub,
     followUp: followUpStub,
     deferReply: deferReplyStub,
-    // Expose stubs for assertions
     stubs: { reply: replyStub, followUp: followUpStub, deferReply: deferReplyStub },
-    // Simulate state for error handling checks
     replied,
     deferred
   }
 }
 
-// Simplified interaction handler logic (mirroring index.js - with DB calls)
-async function handleInteraction (interaction) {
-  if (!interaction.isChatInputCommand()) return
-  if (!interaction.inGuild()) {
-    await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true })
-    return
+// --- Test Setup and Teardown --- START ---
+let mongoServer
+let updateOneStub // To spy on Repository.updateOne
+
+const setup = async (t) => {
+  // Set a dummy encryption key for testing
+  process.env.ENCRYPTION_KEY = 'testkey_123456789012345678901234' // 32 chars
+  if (process.env.ENCRYPTION_KEY.length !== 32) {
+    throw new Error('Test setup failed: Dummy ENCRYPTION_KEY must be 32 characters.')
   }
 
-  const { commandName } = interaction
+  // Mock fetch
+  originalFetch = global.fetch
+  global.fetch = mockFetch
 
-  if (commandName === 'add-repo') {
-    try {
-      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true })
-        return // Exit early
-      }
+  // DB setup
+  mongoServer = await MongoMemoryServer.create()
+  const mongoUri = mongoServer.getUri()
+  await connectDB(mongoUri)
+  await Repository.deleteMany({}) // Clean slate
 
-      const repoUrl = interaction.options.getString('url')
-      if (!repoUrl) {
-        await interaction.reply({ content: 'Error: The repository URL is missing.', ephemeral: true })
-        return // Exit early
-      }
+  // Stub Repository.updateOne BEFORE tests use it
+  updateOneStub = sinon.stub(Repository, 'updateOne')
 
-      await interaction.deferReply({ ephemeral: true })
-
-      // --- Database Logic (Copied from index.js for test simulation) ---
-      const channelId = interaction.channelId
-      let replyMessage = ''
-
-      try {
-        const updatedRepo = await Repository.findOneAndUpdate(
-          { discordChannelId: channelId },
-          { repoUrl },
-          { new: true, upsert: true, runValidators: true }
-        )
-        console.log(`TEST: Repository config updated/created for channel ${channelId}: ${updatedRepo.repoUrl}`)
-        replyMessage = `Repository configuration saved for this channel: <${repoUrl}>`
-      } catch (dbError) {
-        console.error('TEST: Database error saving repository:', dbError)
-        if (dbError.name === 'ValidationError') {
-          replyMessage = `Error saving repository: Invalid data provided. ${Object.values(dbError.errors).map(e => e.message).join(' ')}`
-        } else {
-          replyMessage = 'Error saving repository configuration to the database.'
-        }
-      }
-
-      // Follow up after deferral
-      await interaction.followUp({ content: replyMessage, ephemeral: true })
-    } catch (error) {
-      console.error('Mock handler error:', error)
-      // Simplified error reply for testing
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ content: 'There was an error processing your request.', ephemeral: true })
-      } else {
-        await interaction.reply({ content: 'There was an error processing your request.', ephemeral: true })
-      }
-    }
-  } else if (commandName === 'ping') {
-    // Add a basic ping handler if needed for completeness, or ignore
-    await interaction.reply('Pong!')
-  }
+  t.pass('Setup complete: ENV key set, fetch mocked, DB connected, updateOne stubbed')
 }
 
-// --- Test Setup and Teardown ---
-let mongoServer
-let mongoUri
+const teardown = async (t) => {
+  updateOneStub.restore() // Restore the original method
+  global.fetch = originalFetch // Restore fetch
+  await closeDB()
+  if (mongoServer) {
+    await mongoServer.stop()
+  }
+  delete process.env.ENCRYPTION_KEY
+  sinon.resetHistory() // Reset sinon stubs history
+  t.pass('Teardown complete: updateOne restored, fetch restored, DB closed, ENV cleared')
+}
+// --- Test Setup and Teardown --- END ---
 
 test('** Setup Add-Repo Tests **', async (t) => {
-  mongoServer = await MongoMemoryServer.create()
-  mongoUri = mongoServer.getUri()
-  await connectDB(mongoUri)
-  t.pass('Mongoose connected for Add-Repo command tests')
-  // Clean repo collection before tests
-  await Repository.deleteMany({})
-  t.pass('Repository collection cleaned')
+  // The setup is now done within each test block using setup()
+  t.pass('Deferring setup to individual tests')
   t.end()
 })
 
-// --- Tests ---
+// --- Tests --- (Refactored to use actual handler)
 
-test('/add-repo Command - Non-Admin', async (t) => {
+test('/addrepo Command - Non-Admin', async (t) => {
+  await setup(t)
   const mockInteraction = createMockInteraction({ isAdmin: false })
-  await handleInteraction(mockInteraction)
+
+  await interactionCreateHandler.execute(mockInteraction)
 
   t.ok(mockInteraction.stubs.reply.calledOnce, 'reply should be called once')
   const replyArgs = mockInteraction.stubs.reply.firstCall.args[0]
@@ -152,102 +153,202 @@ test('/add-repo Command - Non-Admin', async (t) => {
   t.equal(replyArgs.ephemeral, true, 'Permission error reply should be ephemeral')
   t.notOk(mockInteraction.stubs.deferReply.called, 'deferReply should not be called')
   t.notOk(mockInteraction.stubs.followUp.called, 'followUp should not be called')
+  t.notOk(updateOneStub.called, 'Repository.updateOne should not be called')
 
+  await teardown(t)
   t.end()
 })
 
-test('/add-repo Command - Admin Success', async (t) => {
-  const testUrl = 'https://valid-repo.com/test.git'
-  const mockInteraction = createMockInteraction({ isAdmin: true, repoUrl: testUrl })
-  await handleInteraction(mockInteraction)
+test('/addrepo - Success with SSH Key Attachment (New Repo)', async (t) => {
+  await setup(t)
+  const testUrl = 'git@github.com:test/ssh-repo-new.git'
+  const mockAttachment = {
+    name: 'id_rsa_test',
+    url: 'http://mock-key-url.com/valid-key',
+    contentType: 'application/octet-stream'
+  }
+  const mockInteraction = createMockInteraction({
+    isAdmin: true,
+    repoUrl: testUrl,
+    attachment: mockAttachment
+  })
 
-  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply should be called once for admin')
-  const deferArgs = mockInteraction.stubs.deferReply.firstCall.args[0]
-  t.equal(deferArgs.ephemeral, true, 'Defer reply should be ephemeral')
+  // Configure stub to simulate successful upsert (insertion)
+  const mockObjectId = new mongoose.Types.ObjectId()
+  updateOneStub.resolves({ acknowledged: true, modifiedCount: 0, upsertedId: mockObjectId, matchedCount: 0 })
 
-  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp should be called once after deferral')
+  await interactionCreateHandler.execute(mockInteraction)
+
+  // Assertions
+  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply should be called once')
+  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp should be called once')
   const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
-  t.equal(followUpArgs.content, `Repository configuration saved for this channel: <${testUrl}>`, 'Should followUp with success message and URL')
-  t.equal(followUpArgs.ephemeral, true, 'Acknowledgement followUp should be ephemeral')
-  t.notOk(mockInteraction.stubs.reply.called, 'reply should not be called directly on success')
+  t.ok(followUpArgs.content.includes(`Repository configured: ${testUrl}. SSH key uploaded and secured.`), 'FollowUp confirms key upload for new repo')
+  t.equal(followUpArgs.ephemeral, true, 'FollowUp is ephemeral')
 
-  // Assert database state
-  const savedDoc = await Repository.findOne({ discordChannelId: mockInteraction.channelId })
-  t.ok(savedDoc, 'Document should exist in DB')
-  t.equal(savedDoc.repoUrl, testUrl, 'Saved document should have the correct repoUrl')
+  t.ok(updateOneStub.calledOnce, 'Repository.updateOne should be called once')
+  const updateCallArgs = updateOneStub.firstCall.args
+  t.equal(updateCallArgs[0].discordChannelId, mockInteraction.channelId, 'updateOne filter uses correct channelId')
+  t.equal(updateCallArgs[1].$set.repoUrl, testUrl, 'updateOne update sets correct repoUrl')
+  t.ok(updateCallArgs[1].$set.encryptedSshKey, 'updateOne update includes encryptedSshKey')
+  t.ok(updateCallArgs[2].upsert, 'updateOne uses upsert option')
 
-  // Clean up this specific document
-  await Repository.deleteOne({ _id: savedDoc._id })
+  try {
+    const decryptedKey = decrypt(updateCallArgs[1].$set.encryptedSshKey)
+    t.equal(decryptedKey, '-----BEGIN RSA PRIVATE KEY-----\nMOCK KEY CONTENT\n-----END RSA PRIVATE KEY-----', 'Stored key should decrypt correctly')
+  } catch (e) {
+    t.fail(`Failed to decrypt stored key: ${e.message}`)
+  }
+
+  await teardown(t)
   t.end()
 })
 
-test('/add-repo Command - Missing URL (Should not happen if required)', async (t) => {
-  // Although the option is required, test the internal check just in case
-  const mockInteraction = createMockInteraction({ isAdmin: true, repoUrl: null }) // Simulate missing URL
-  await handleInteraction(mockInteraction)
+test('/addrepo - Success with SSH Key Attachment (Update Repo)', async (t) => {
+  await setup(t)
+  const testUrl = 'git@github.com:test/ssh-repo-update.git'
+  const mockAttachment = { name: 'id_rsa_upd', url: 'http://mock-key-url.com/valid-key' }
+  const mockInteraction = createMockInteraction({ isAdmin: true, repoUrl: testUrl, attachment: mockAttachment })
 
-  t.ok(mockInteraction.stubs.reply.calledOnce, 'reply should be called once for missing URL')
-  const replyArgs = mockInteraction.stubs.reply.firstCall.args[0]
-  t.equal(replyArgs.content, 'Error: The repository URL is missing.', 'Should reply with missing URL error')
-  t.equal(replyArgs.ephemeral, true, 'Missing URL error reply should be ephemeral')
-  t.notOk(mockInteraction.stubs.deferReply.called, 'deferReply should not be called')
-  t.notOk(mockInteraction.stubs.followUp.called, 'followUp should not be called')
+  // Configure stub to simulate successful update
+  updateOneStub.resolves({ acknowledged: true, modifiedCount: 1, upsertedId: null, matchedCount: 1 })
 
+  await interactionCreateHandler.execute(mockInteraction)
+
+  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply called')
+  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp called')
+  const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
+  t.ok(followUpArgs.content.includes(`Repository configuration updated: ${testUrl}. New SSH key uploaded and secured.`), 'FollowUp confirms key upload for updated repo')
+
+  t.ok(updateOneStub.calledOnce, 'Repository.updateOne called')
+  // Basic check - more detailed checks in the 'New Repo' test
+  t.ok(updateOneStub.firstCall.args[1].$set.encryptedSshKey, 'Update includes encrypted key')
+
+  await teardown(t)
   t.end()
 })
 
-test('Interaction Handler - Not in Guild', async (t) => {
-  const mockInteraction = createMockInteraction({ inGuild: false })
-  await handleInteraction(mockInteraction)
+test('/addrepo - Fetch Key Failure', async (t) => {
+  await setup(t)
+  const mockAttachment = { name: 'fetch_fail.key', url: 'http://mock-key-url.com/fetch-error' }
+  const mockInteraction = createMockInteraction({ isAdmin: true, attachment: mockAttachment })
 
-  t.ok(mockInteraction.stubs.reply.calledOnce, 'reply should be called once')
-  const replyArgs = mockInteraction.stubs.reply.firstCall.args[0]
-  t.equal(replyArgs.content, 'This command can only be used in a server.', 'Should reply with guild-only error')
-  t.equal(replyArgs.ephemeral, true, 'Guild-only error reply should be ephemeral')
-  t.notOk(mockInteraction.stubs.deferReply.called, 'deferReply should not be called')
-  t.notOk(mockInteraction.stubs.followUp.called, 'followUp should not be called')
+  await interactionCreateHandler.execute(mockInteraction)
 
+  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply called')
+  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp called')
+  const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
+  t.ok(followUpArgs.content.includes('Error fetching the SSH key file: Failed to fetch key (404): Not Found'), 'Reply indicates fetch error with status')
+  t.equal(followUpArgs.ephemeral, true, 'Error reply is ephemeral')
+  t.notOk(updateOneStub.called, 'Repository.updateOne should not be called on fetch failure')
+
+  await teardown(t)
   t.end()
 })
 
-// Optional: Add a test for a different command to ensure it's ignored by add-repo logic
-test('Interaction Handler - Ignores Other Commands', async (t) => {
+test('/addrepo - Empty Key Content Failure', async (t) => {
+  await setup(t)
+  const mockAttachment = { name: 'empty.key', url: 'http://mock-key-url.com/empty-key' }
+  const mockInteraction = createMockInteraction({ isAdmin: true, attachment: mockAttachment })
+
+  await interactionCreateHandler.execute(mockInteraction)
+
+  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply called')
+  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp called')
+  const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
+  t.ok(followUpArgs.content.includes('Error fetching the SSH key file: Fetched key content is empty or whitespace.'), 'Reply indicates empty key error')
+  t.equal(followUpArgs.ephemeral, true, 'Error reply is ephemeral')
+  t.notOk(updateOneStub.called, 'Repository.updateOne should not be called on empty key failure')
+
+  await teardown(t)
+  t.end()
+})
+
+test('/addrepo - Missing Attachment Failure', async (t) => {
+  await setup(t)
+  // Pass attachment: null (default)
+  const mockInteraction = createMockInteraction({ isAdmin: true, attachment: null })
+
+  await interactionCreateHandler.execute(mockInteraction)
+
+  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply called') // Handler defers before checking attachment
+  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp called')
+  const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
+  t.ok(followUpArgs.content.includes('Error: SSH key attachment is missing.'), 'Reply indicates missing attachment')
+  t.equal(followUpArgs.ephemeral, true, 'Error reply is ephemeral')
+  t.notOk(updateOneStub.called, 'Repository.updateOne should not be called on missing attachment')
+
+  await teardown(t)
+  t.end()
+})
+
+test('/addrepo - Encryption Failure', async (t) => {
+  await setup(t)
+  const mockAttachment = { name: 'valid-but-encrypt-fails.key', url: 'http://mock-key-url.com/valid-key' }
+  const mockInteraction = createMockInteraction({ isAdmin: true, attachment: mockAttachment })
+
+  // Temporarily break the encryption key to cause encrypt() to fail
+  const originalKey = process.env.ENCRYPTION_KEY
+  process.env.ENCRYPTION_KEY = 'shortkey' // Invalid key
+
+  await interactionCreateHandler.execute(mockInteraction)
+
+  process.env.ENCRYPTION_KEY = originalKey // Restore key immediately
+
+  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply called')
+  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp called')
+  const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
+  t.ok(followUpArgs.content.includes('Error processing the SSH key.'), 'Reply indicates processing/encryption error')
+  t.equal(followUpArgs.ephemeral, true, 'Error reply is ephemeral')
+  t.notOk(updateOneStub.called, 'Repository.updateOne should not be called on encryption failure')
+
+  await teardown(t)
+  t.end()
+})
+
+test('/addrepo - Database Save Failure (updateOne rejects)', async (t) => {
+  await setup(t)
+  const mockAttachment = { name: 'id_rsa_dbfail', url: 'http://mock-key-url.com/valid-key' }
+  const mockInteraction = createMockInteraction({ isAdmin: true, attachment: mockAttachment })
+
+  // Configure stub to simulate DB error
+  const dbError = new Error('Simulated DB write error')
+  updateOneStub.rejects(dbError)
+
+  await interactionCreateHandler.execute(mockInteraction)
+
+  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply called')
+  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp called')
+  const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
+  t.ok(followUpArgs.content.includes('An error occurred while saving the repository configuration.'), 'Reply indicates generic DB save error')
+  t.equal(followUpArgs.ephemeral, true, 'Error reply is ephemeral')
+  t.ok(updateOneStub.calledOnce, 'Repository.updateOne was called before error')
+
+  await teardown(t)
+  t.end()
+})
+
+// Test other commands are ignored by addrepo logic
+test('Interaction Handler - Ignores Other Commands (e.g., ping)', async (t) => {
+  await setup(t) // Setup DB connection etc., even if not used by ping
   const mockInteraction = createMockInteraction({ commandName: 'ping', isAdmin: true })
-  await handleInteraction(mockInteraction)
 
-  // Check if ping's reply was called, and add-repo's were not
+  await interactionCreateHandler.execute(mockInteraction)
+
+  // Ping should reply directly
   t.ok(mockInteraction.stubs.reply.calledOnce, 'ping reply should be called')
   t.equal(mockInteraction.stubs.reply.firstCall.args[0], 'Pong!', 'Should reply Pong! for ping command')
   t.notOk(mockInteraction.stubs.deferReply.called, 'deferReply should not be called for ping')
   t.notOk(mockInteraction.stubs.followUp.called, 'followUp should not be called for ping')
+  t.notOk(updateOneStub.called, 'Repository.updateOne should not be called for ping')
 
-  t.end()
-})
-
-// --- Database Error Test ---
-test('/add-repo Command - Database Save Error', async (t) => {
-  const testUrl = 'https://db-error-repo.com/test.git'
-  const mockInteraction = createMockInteraction({ isAdmin: true, repoUrl: testUrl })
-
-  // Stub the findOneAndUpdate method to throw an error
-  const findOneAndUpdateStub = sinon.stub(Repository, 'findOneAndUpdate').throws(new Error('Simulated DB Error'))
-
-  await handleInteraction(mockInteraction)
-
-  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply should be called')
-  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp should be called')
-  const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
-  t.equal(followUpArgs.content, 'Error saving repository configuration to the database.', 'Should reply with DB error message')
-
-  // Restore the original method
-  findOneAndUpdateStub.restore()
+  await teardown(t)
   t.end()
 })
 
 // --- Test Teardown ---
 test('** Teardown Add-Repo Tests **', async (t) => {
-  await closeDB()
-  await mongoServer.stop()
-  t.pass('Mongoose disconnected and server stopped for Add-Repo tests')
+  // Teardown is now done within each test block using teardown()
+  t.pass('Deferring teardown to individual tests')
   t.end()
 })

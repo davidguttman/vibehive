@@ -10,10 +10,12 @@ const commands = [
       option.setName('repository')
         .setDescription('The GitHub repository URL (e.g., https://github.com/owner/repo)')
         .setRequired(true))
-    .addStringOption(option =>
-      option.setName('branch')
-        .setDescription('The branch to use (defaults to default branch)')
-        .setRequired(false)), // Assuming addrepo exists from previous tutorials
+    .addAttachmentOption(option =>
+      option.setName('ssh_key')
+        .setDescription('Your SSH private key file (will be encrypted).')
+        .setRequired(true))
+    .setDefaultMemberPermissions(0)
+    .setDMPermission(false),
   new SlashCommandBuilder()
     .setName('files')
     .setDescription('Lists the files currently in context for this channel'),

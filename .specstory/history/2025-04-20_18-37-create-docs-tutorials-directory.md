@@ -617,6 +617,794 @@ Now, I'll install the required dependencies (`discord.js`, `dotenv`) and dev dep
 
 ---
 
+```bash
+npm install discord.js dotenv && npm install --save-dev standard tape
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+npm http fetch GET 200 https://registry.npmjs.org/discord.js 268ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/dotenv 59ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/tslib 80ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/fast-deep-equal 163ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.snakecase 185ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/undici 197ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/discord-api-types 217ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@sapphire%2fsnowflake 225ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@discordjs%2fformatters 240ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@discordjs%2futil 277ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@discordjs%2fws 283ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@discordjs%2fcollection 318ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@discordjs%2fbuilders 332ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@discordjs%2frest 371ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ts-mixer 69ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/magic-bytes.js 68ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ws 67ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@vladfrangu%2fasync_event_emitter 89ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@vladfrangu%2fasync_event_emitter 90ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@types%2fws 90ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@sapphire%2fshapeshift 101ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@sapphire%2fasync-queue 113ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@sapphire%2fasync-queue 123ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/lodash 59ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/rimraf 48ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/bufferutil 60ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/utf-8-validate 59ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@types%2fnode 138ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/undici-types 51ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/package-json-from-dist 44ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/glob 56ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/path-scurry 56ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/foreground-child 59ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/jackspeak 59ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/minipass 65ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/minimatch 67ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/signal-exit 52ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/brace-expansion 55ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/cross-spawn 57ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@isaacs%2fcliui 64ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/lru-cache 100ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/which 48ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/shebang-command 51ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/path-key 61ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/isexe 62ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/shebang-regex 85ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/wrap-ansi 49ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/strip-ansi 56ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/string-width 57ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/string-width 60ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/strip-ansi 60ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/wrap-ansi 59ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/emoji-regex 49ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-styles 49ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-regex 57ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-regex 56ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-fullwidth-code-point 61ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-styles 59ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/emoji-regex 62ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eastasianwidth 67ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/balanced-match 48ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/color-convert 54ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/color-name 55ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/dotenv/-/dotenv-16.5.0.tgz 106ms (cache miss)
+npm http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 458ms
+
+added 67 packages, and audited 68 packages in 3s
+
+22 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+npm WARN config init.license Use `--init-license` instead.
+npm http fetch GET 200 https://registry.npmjs.org/standard 257ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/tape 67ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/glob 44ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-config-standard-jsx 96ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-config-standard 174ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/array.prototype.every 172ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-plugin-import 188ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object.assign 190ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/has-dynamic-import 193ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/hasown 194ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/deep-equal 205ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/get-package-type 208ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/inherits 209ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/defined 214ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@ljharb%2fthrough 217ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-regex 213ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/call-bind 216ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/for-each 216ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint 221ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/string.prototype.trim 220ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/minimist 223ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-plugin-promise 230ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object-is 224ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object-inspect 225ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@ljharb%2fresumer 230ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-plugin-n 232ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-plugin-react 232ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/resolve 228ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/mock-property 231ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object-keys 242ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/standard-engine 254ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/dotignore 373ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/version-guard 461ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/strip-ansi 67ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/minimatch 69ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/natural-compare 95ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/find-up 100ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/esutils 102ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/levn 105ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/esquery 104ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/graphemer 113ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/optionator 113ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/doctrine 115ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/espree 118ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/debug 119ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/chalk 121ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-glob 120ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/text-table 119ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ajv 126ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2fjs 125ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-scope 143ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/glob-parent 145ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ignore 151ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/file-entry-cache 148ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-path-inside 156ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/json-stable-stringify-without-jsonify 151ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/imurmurhash 158ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/js-yaml 160ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-visitor-keys 161ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/globals 166ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/escape-string-regexp 163ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-utils 164ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@nodelib%2ffs.walk 173ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/debug 171ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint-community%2fregexpp 182ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-core-module 183ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.merge 215ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-core-module 204ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ignore 209ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@ungap%2fstructured-clone 217ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/doctrine 208ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-glob 207ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/array.prototype.flat 209ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint%2feslintrc 221ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-plugin-es 217ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@humanwhocodes%2fconfig-array 229ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-import-resolver-node 224ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/semver 224ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@eslint-community%2feslint-utils 242ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object.groupby 237ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/array.prototype.flatmap 251ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/builtins 253ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/semver 255ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-iterator-helpers 245ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/eslint-module-utils 254ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/array.prototype.tosorted 254ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object.fromentries 259ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/array.prototype.flatmap 257ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@rtsao%2fscc 268ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object.values 264ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/string.prototype.trimend 264ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object.values 262ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/array.prototype.findlastindex 284ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@humanwhocodes%2fmodule-importer 291ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/tsconfig-paths 288ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object.entries 293ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/array-includes 303ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/array.prototype.findlast 299ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/pkg-conf 298ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/xdg-basedir 302ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/prop-types 304ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/string.prototype.matchall 304ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/get-stdin 314ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/string.prototype.repeat 316ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/jsx-ast-utils 324ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/estraverse 341ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/jiti 89ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-styles 39ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/ansi-regex 24ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/brace-expansion 27ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/type-fest 79ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/argparse 85ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/fast-json-stable-stringify 94ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/json-schema-traverse 95ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/fastq 97ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-extglob 88ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/esrecurse 94ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/locate-path 91ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@humanwhocodes%2fobject-schema 99ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/acorn-jsx 93ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/prelude-ls 89ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/supports-color 97ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/ms 97ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/import-fresh 103ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/strip-json-comments 139ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/flat-cache 131ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@nodelib%2ffs.scandir 140ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/type-check 125ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/deep-is 127ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/type-check 130ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/uri-js 144ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/path-exists 138ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/word-wrap 132ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/fast-levenshtein 134ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/acorn 171ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/parent-module 61ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/resolve-from 73ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/run-parallel 57ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/reusify 58ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@nodelib%2ffs.stat 70ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/queue-microtask 94ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/punycode 70ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/has-flag 49ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/get-intrinsic 61ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-object-atoms 66ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-string 65ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/define-properties 73ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-object-atoms 71ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/function-bind 66ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/call-bound 64ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-abstract 71ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-abstract 75ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-shim-unscopables 76ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-abstract 82ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/strip-bom 74ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-errors 85ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-shim-unscopables 92ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/json5 85ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@types%2fjson5 107ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/call-bound 121ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/call-bound 113ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/arraybuffer.prototype.slice 70ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/data-view-byte-offset 73ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-define-property 77ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/define-data-property 80ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/has-property-descriptors 79ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/data-view-byte-length 77ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-to-primitive 83ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/has-proto 82ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-set-tostringtag 84ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/function.prototype.name 85ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-define-property 87ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/call-bind-apply-helpers 92ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/set-function-length 92ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/get-symbol-description 110ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/data-view-buffer 121ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-callable 123ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/gopd 125ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/get-proto 126ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/math-intrinsics 121ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-typed-array 123ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-data-view 126ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/available-typed-arrays 136ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/has-property-descriptors 137ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/internal-slot 136ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/safe-array-concat 133ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/array-buffer-byte-length 148ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-weakref 142ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-array-buffer 155ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/set-proto 156ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/has-symbols 163ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/call-bind-apply-helpers 157ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/safe-push-apply 162ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/globalthis 169ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/safe-regex-test 170ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/typed-array-buffer 176ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-shared-array-buffer 179ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/which-typed-array 176ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/own-keys 183ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/string.prototype.trimstart 188ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/unbox-primitive 191ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/get-proto 197ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/has-tostringtag 199ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/regexp.prototype.flags 205ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/typed-array-byte-length 212ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/typed-array-byte-offset 217ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/typed-array-length 217ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/dunder-proto 85ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-date-object 92ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/reflect.getprototypeof 83ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/reflect.getprototypeof 85ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/which-boxed-primitive 83ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/has-bigints 84ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-symbol 105ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/possible-typed-array-names 108ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/set-function-name 91ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/isarray 91ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/functions-have-names 110ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel 104ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/dunder-proto 116ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/path-parse 61ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/supports-preserve-symlinks-flag 87ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/regexpp 50ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/loose-envify 52ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/object-assign 53ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/iterator.prototype 56ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/react-is 138ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/rimraf 4ms (cache hit)
+npm http fetch GET 200 https://registry.npmjs.org/flatted 60ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/keyv 61ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/p-locate 61ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/json-buffer 57ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/callsites 61ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel-list 48ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel-map 60ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/side-channel-weakmap 61ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/p-limit 45ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/yocto-queue 52ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/js-tokens 58ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/load-json-file 60ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/pify 60ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/parse-json 65ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/graceful-fs 66ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/json-parse-better-errors 49ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/error-ex 58ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-arrayish 56ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/inflight 54ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/es-get-iterator 64ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/fs.realpath 63ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/once 65ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/which-collection 69ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-arguments 70ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/path-is-absolute 70ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-boolean-object 48ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-weakset 51ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-weakmap 56ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-map 58ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-set 58ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-set 63ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-map 64ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-number-object 62ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/stop-iteration-iterator 69ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-bigint 73ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/which-builtin-type 62ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-generator-function 58ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-finalizationregistry 59ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/is-async-function 68ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/async-function 53ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/concat-map 52ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/wrappy 50ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/p-try 58ms (cache updated)
+npm WARN deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cac
+he if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and
+ powerful.
+npm WARN deprecated @humanwhocodes/config-array@0.13.0: Use @eslint/config-array instead
+npm WARN deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm WARN deprecated @humanwhocodes/object-schema@2.0.3: Use @eslint/object-schema instead
+npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm WARN deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 457ms
+npm WARN deprecated eslint@8.57.1: This version is no longer supported. Please see https://eslint.org/version-suppor
+t for other options.
+
+added 282 packages, and audited 350 packages in 5s
+
+147 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+
+
+~/play/test/vibehive main* 7s
+
+```
+
+---
+
+Dependencies installed.
+
+Next, I'll read the existing `README.md` to see what's in it before I add the tutorial's content.
+
+---
+
+Read file: README.md
+
+---
+
+Okay, the `README.md` is very minimal. I'll proceed with appending the tutorial's content later.
+
+Now, let's create the bot's entry point file, `index.js`, as described in Step 2.
+
+---
+
+```diff
+- 
++ // index.js
++ 
++ // 1. Package Requires
++ require('dotenv').config() // Load environment variables from .env file
++ const { Client, GatewayIntentBits, Events, REST, Routes } = require('discord.js')
++ 
++ // 2. Local Requires (None for this simple example)
++ 
++ // 3. Constants
++ const BOT_TOKEN = process.env.DISCORD_TOKEN
++ const CLIENT_ID = process.env.DISCORD_CLIENT_ID // Add your Client ID to .env
++ 
++ // Simple command definition
++ const commands = [
++   {
++     name: 'ping',
++     description: 'Replies with Pong!'
++   }
++ ]
++ 
++ // 4. Immediately Run Code
++ 
++ // Check if token is provided
++ if (!BOT_TOKEN) {
++   console.error('Error: DISCORD_TOKEN is required in your .env file')
++   process.exit(1)
++ }
++ if (!CLIENT_ID) {
++   console.error('Error: DISCORD_CLIENT_ID is required in your .env file')
++   process.exit(1)
++ }
++ 
++ // Discord Client Setup
++ const client = new Client({
++   intents: [
++     GatewayIntentBits.Guilds // Required for basic guild information
++     // Add other intents as needed
++   ]
++ })
++ 
++ // REST API setup for command registration
++ const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
++ 
++ // Function to register slash commands
++ (async () => {
++   try {
++     console.log('Started refreshing application (/) commands.')
++ 
++     await rest.put(
++       Routes.applicationCommands(CLIENT_ID), // Register globally - takes time to propagate
++       // Use Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID) for faster testing in a specific server
++       { body: commands }
++     )
++ 
++     console.log('Successfully reloaded application (/) commands.')
++   } catch (error) {
++     console.error('Error registering commands:', error)
++   }
++ })()
++ 
++ // Event: Bot Ready
++ client.once(Events.ClientReady, c => {
++   console.log(\`Ready! Logged in as ${c.user.tag}\`)
++ })
++ 
++ // Event: Interaction Created (Slash Command Execution)
++ client.on(Events.InteractionCreate, async interaction => {
++   if (!interaction.isChatInputCommand()) return // Only handle slash commands
++ 
++   const { commandName } = interaction
++ 
++   console.log(\`Received interaction: ${commandName}\`)
++ 
++   if (commandName === 'ping') {
++     try {
++       await interaction.reply('Pong!')
++       console.log('Replied to /ping command.')
++     } catch (error) {
++       console.error('Error replying to ping:', error)
++       // Inform user if possible
++       if (interaction.replied || interaction.deferred) {
++         await interaction.followUp({ content: 'There was an error while executing this command!', ephemeral: true })
++       } else {
++         await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true })
++       }
++     }
++   }
++   // Add handlers for other commands here
++ })
++ 
++ // Login to Discord
++ client.login(BOT_TOKEN)
++   .then(() => console.log('Login successful!'))
++   .catch(error => {
++     console.error('Login failed:', error)
++     process.exit(1) // Exit if login fails
++   })
++ 
++ // 5. Module Exports (None needed for this file)
++ 
++ // 6. Functions (Helper functions could go here if the file grew larger) 
+```
+
+---
+
+
+
+---
+
+Ah, it looks like there was a small syntax issue in the `index.js` code from the tutorial related to the template literal backticks. I'll fix that now.
+
+---
+
+```diff
+  // Event: Bot Ready
+  client.once(Events.ClientReady, c => {
+-   console.log(\`Ready! Logged in as ${c.user.tag}\`)
++   console.log(`Ready! Logged in as ${c.user.tag}`)
+  })
+  
+    const { commandName } = interaction
+  
+-   console.log(\`Received interaction: ${commandName}\`)
++   console.log(`Received interaction: ${commandName}`)
+  
+    if (commandName === 'ping') {
+```
+
+---
+
+
+
+---
+
+Okay, those are just whitespace errors. I'll use `standard --fix` later to handle those as per your instructions, Big D.
+
+Now, I'll update the `.gitignore` file to include `.env` as mentioned in Step 3.
+
+---
+
+Read file: .gitignore
+
+---
+
+```diff
+  !.specstory
++ node_modules
++ .env
+```
+
+---
+
+`.gitignore` is updated. Now, I'll modify the `package.json` file to add the `lint`, `start`, and `test` scripts as specified in Step 1 and Step 8.
+
+---
+
+Read file: package.json
+
+---
+
+```diff
+    },
+    "scripts": {
+-     "test": "echo \"Error: no test specified\" && exit 1"
++     "lint": "standard --fix",
++     "start": "node index.js",
++     "test": "tape test/**/*.test.js"
+    },
+    "keywords": [],
+```
+
+---
+
+
+
+---
+
+Scripts updated in `package.json`.
+
+Now, as per Step 4, I'll run the linter to fix any style issues in `index.js`.
+
+---
+
+```bash
+npm run lint
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+
+> vibehive@1.0.0 lint
+> standard --fix
+
+
+
+~/play/test/vibehive main*
+
+```
+
+---
+
+
+
+---
+
+Linter finished.
+
+Now, proceeding with Step 8, I'll create the `test` directory.
+
+---
+
+```bash
+mkdir test
+```
+
+```
+
+
+~/play/test/vibehive main*
+
+```
+
+---
+
+Next, I'll create the test file `test/ping.test.js` with the content from Step 8.
+
+---
+
+```diff
+- 
++ // test/ping.test.js
++ const test = require('tape')
++ 
++ // Mock interaction object (very basic)
++ const createMockInteraction = (commandName) => ({
++   commandName: commandName,
++   isChatInputCommand: () => true,
++   reply: async (message) => {
++     // In a real test, you might assert the message content
++     console.log(`Mock Reply: ${message}`)
++     return Promise.resolve() // Simulate successful reply
++   },
++   // Add other methods/properties used by your handler as needed
++   replied: false,
++   deferred: false
++ })
++ 
++ // Simulate the core logic from your interaction handler
++ async function handlePingInteraction (interaction) {
++   if (interaction.commandName === 'ping') {
++     try {
++       await interaction.reply('Pong!')
++       return 'Replied Pong!' // Return status for testing
++     } catch (error) {
++       console.error('Mock Error replying:', error)
++       return 'Error occurred'
++     }
++   }
++   return 'Not a ping command'
++ }
++ 
++ test('Ping Command Handler', async (t) => {
++   const mockPingInteraction = createMockInteraction('ping')
++   const result = await handlePingInteraction(mockPingInteraction)
++ 
++   t.equal(result, 'Replied Pong!', 'Should reply Pong! to /ping command')
++ 
++   const mockOtherInteraction = createMockInteraction('other')
++   const otherResult = await handlePingInteraction(mockOtherInteraction)
++   t.equal(otherResult, 'Not a ping command', 'Should ignore non-ping commands')
++ 
++   t.end() // End the test explicitly
++ })
++ 
++ // Add more tests as needed 
+```
+
+---
+
+
+
+---
+
+Test file created.
+
+Now, I'll append the basic README content from Step 7 to the existing `README.md`.
+
+---
+
+```diff
+  # vibehive
++ 
++ ## My Discord Bot
++ 
++ A basic Discord bot built with Node.js and discord.js v14.
++ 
++ ## Setup
++ 
++ 1.  Clone the repository (or download the files).
++ 2.  Install dependencies:
++     ```bash
++     npm install
++     ```
++ 3.  Create a `.env` file in the project root with your bot token and client ID:
++     ```
++     DISCORD_TOKEN=YOUR_BOT_TOKEN_HERE
++     DISCORD_CLIENT_ID=YOUR_APPLICATION_CLIENT_ID_HERE
++     ```
++ 4.  (Optional) Lint the code:
++     ```bash
++     npm run lint
++     ```
++ 
++ ## Running the Bot
++ 
++ ```bash
++ node index.js
++ # or
++ npm start
++ ```
++ 
++ ## Features
++ 
++ *   Responds "Pong!" to the `/ping` slash command.
+```
+
+---
+
+`README.md` has been updated.
+
+Finally, I'll run the tests as per Step 8 to ensure everything is set up correctly and the basic test passes.
+
+---
+
+```bash
+npm test
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+
+> vibehive@1.0.0 test
+> tape test/**/*.test.js
+
+TAP version 13
+# Ping Command Handler
+Mock Reply: Pong!
+ok 1 Should reply Pong! to /ping command
+ok 2 Should ignore non-ping commands
+
+1..2
+# tests 2
+# pass  2
+
+# ok
+
+
+
+~/play/test/vibehive main*
+
+```
+
+---
+
+Alright Big D, the tests passed!
+
+I have followed the steps in `docs/tutorials/01-basic-discord-bot.md`:
+*   Initialized the npm project and installed dependencies.
+*   Created `index.js` with the bot logic.
+*   Updated `.gitignore`.
+*   Updated `package.json` with the necessary scripts.
+*   Ran the linter.
+*   Created the `test` directory and `test/ping.test.js`.
+*   Appended the setup instructions to `README.md`.
+*   Ran `npm test` successfully.
+
+The basic Discord bot structure is now implemented in the root of your project. Remember to create a `.env` file with your `DISCORD_TOKEN` and `DISCORD_CLIENT_ID` before running the bot with `npm start`.
+
+---
+
+_**User**_
+
+Create a new markdown file in the tutorials directory. It should be in the same style as previous tutorials. USE ls/tree to see the files in the codebase, and then write a detailed step-by-step tutorial that shows how to 
+@02.md 
+Finally, use ls and check if file has been created
+
+---
+
+_**Assistant**_
+
+
+
+---
+
 
 
 ---

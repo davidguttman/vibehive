@@ -13,6 +13,10 @@ def main():
         args = parser.parse_args()
         prompt_value = args.prompt
 
+        if prompt_value == 'trigger error':
+            sys.stderr.write("Simulated error triggered by prompt.\n")
+            sys.exit(1)
+
         response = {
             "overall_status": "success",
             "error": None,

@@ -307,6 +307,484 @@ Ah, it seems the `processingMessage` variable isn't accessible in the `catch` bl
 
 ---
 
+```diff
+      const channelId = message.channelId
+  
++     let processingMessage // Declare outside try
+      try {
+        // Ensure DB is connected (assuming connectDB handles multiple calls safely)
+  
+        // Add some user feedback that the request is being processed
+-       const processingMessage = await message.reply('Processing your request...').catch(console.error)
++       processingMessage = await message.reply('Processing your request...').catch(console.error)
+  
+        // 6. Invoke the Python wrapper
+```
+
+---
+
+Now that the `index.js` changes are done, I'll move on to updating the test file `test/mentionHandler.test.js`. First, I need to read its current content.
+
+---
+
+Read file: test/mentionHandler.test.js
+
+---
+
+
+
+---
+
+Okay, Big D. I'll update the tests in `test/mentionHandler.test.js` to cover the new scenarios outlined in the tutorial: wrapper failure, script failure, and no text response, while also verifying the success case correctly uses `message.reply`. I'll modify the existing success and failure tests and add new ones.
+
+---
+
+```diff
+    })
+  
+-   t.test('Mention, Repo Found, Wrapper Called Successfully', async (st) => {
+-     st.plan(5)
++   t.test('Mention, Repo Found, Wrapper Called Successfully (Text Response)', async (st) => {
++     st.plan(4)
+      const sandbox = sinon.createSandbox()
+      // Arrange
+-     const mockSuccessResult = { status: 'success', data: { events: [{ type: 'text_response', content: 'Mocked AI response' }] } }
++     const mockSuccessResult = {
++       status: 'success',
++       data: {
++         overall_status: 'success',
++         events: [{ type: 'text_response', content: 'Mocked AI response' }]
++       }
++     }
+      const mockInvokeAiderWrapper = sandbox.stub().resolves(mockSuccessResult)
+      const { handleMessageCreate } = proxyquire('../index', {
+      const deleteStub = sandbox.stub().resolves()
+      const replyStub = sandbox.stub().resolves({ delete: deleteStub })
+-     const sendStub = sandbox.stub().resolves()
+      const mockMessage = {
+        author: { bot: false, id: 'user-id', tag: 'User#1234', username: 'TestUser' },
+        channelId: 'channel-with-repo',
+        reply: replyStub,
+-       channel: { send: sendStub, id: 'channel-with-repo' }
++       channel: { send: sandbox.fake(), id: 'channel-with-repo' }
+      }
+  
+  
+      // Assert
+-     st.ok(replyStub.calledOnceWith('Processing your request...'), 'Should send initial "Processing" reply')
+-     st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
+-     st.ok(mockInvokeAiderWrapper.calledWith({ prompt: 'do the thing' }), 'invokeAiderWrapper called with correct prompt')
+-     st.ok(sendStub.calledOnceWithMatch(/Mocked AI response/), 'channel.send should be called with wrapper result')
++     st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
++     st.ok(mockInvokeAiderWrapper.calledOnceWith({ prompt: 'do the thing' }), 'invokeAiderWrapper called with correct prompt')
++     st.ok(replyStub.calledWithMatch(/\*\*Response for @TestUser:\*\*/), 'Should send final response reply')
+      st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
+      sandbox.restore()
+    })
+  
+-   t.test('Mention, Repo Found, Wrapper Fails', async (st) => {
++   t.test('Mention, Repo Found, Wrapper Fails (Execution Error)', async (st) => {
+      st.plan(4)
+      const sandbox = sinon.createSandbox()
+      // Arrange
+-     const mockFailureResult = { status: 'failure', error: 'Simulated python error' }
++     const mockFailureResult = { status: 'failure', error: 'Simulated python execution error', stdout: 'stdout info' }
+      const mockInvokeAiderWrapper = sandbox.stub().resolves(mockFailureResult)
+      const { handleMessageCreate } = proxyquire('../index', {
+      const deleteStub = sandbox.stub().resolves()
+      const replyStub = sandbox.stub().resolves({ delete: deleteStub })
+-     const sendStub = sandbox.stub().resolves()
+      const mockMessage = {
+        author: { bot: false, id: 'user-id', tag: 'User#1234', username: 'FailUser' },
+        channelId: 'channel-with-repo',
+        reply: replyStub,
+-       channel: { send: sendStub, id: 'channel-with-repo' }
++       channel: { send: sandbox.fake(), id: 'channel-with-repo' }
++     }
++ 
++     // Act
++     await handleMessageCreate(mockClient, mockMessage)
++     await new Promise(resolve => setImmediate(resolve))
++ 
++     // Assert
++     st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
++     st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
++     st.ok(replyStub.calledWithMatch(/❌ An error occurred while processing your request\. Details logged\./), 'Should reply with generic wrapper error message')
++     st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
++     sandbox.restore()
++   })
++ 
++   t.test('Mention, Repo Found, Script Fails (overall_status: failure)', async (st) => {
++     st.plan(4)
++     const sandbox = sinon.createSandbox()
++     // Arrange
++     const mockScriptFailureResult = {
++       status: 'success',
++       data: {
++         overall_status: 'failure',
++         error: 'Simulated script error within Python',
++         events: []
++       }
++     }
++     const mockInvokeAiderWrapper = sandbox.stub().resolves(mockScriptFailureResult)
++     const { handleMessageCreate } = proxyquire('../index', {
++       './lib/pythonWrapper': { invokeAiderWrapper: mockInvokeAiderWrapper }
++     })
++     const deleteStub = sandbox.stub().resolves()
++     const replyStub = sandbox.stub().resolves({ delete: deleteStub })
++     const mockMessage = {
++       author: { bot: false, id: 'user-id', tag: 'User#1234', username: 'ScriptFailUser' },
++       mentions: { has: (user) => user.id === mockClient.user.id },
++       content: `<@${mockClient.user.id}> trigger script failure`,
++       channelId: 'channel-with-repo',
++       reply: replyStub,
++       channel: { send: sandbox.fake(), id: 'channel-with-repo' }
++     }
++ 
++     // Act
++     await handleMessageCreate(mockClient, mockMessage)
++     await new Promise(resolve => setImmediate(resolve))
++ 
++     // Assert
++     st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
++     st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
++     st.ok(replyStub.calledWithMatch(/❌ An error occurred within the script execution\. Details logged\./), 'Should reply with generic script error message')
++     st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
++     sandbox.restore()
++   })
++ 
++   t.test('Mention, Repo Found, Success but No Text Response', async (st) => {
++     st.plan(4)
++     const sandbox = sinon.createSandbox()
++     // Arrange
++     const mockNoTextResult = {
++       status: 'success',
++       data: {
++         overall_status: 'success',
++         events: [{ type: 'other_event', detail: 'something happened' }]
++       }
++     }
++     const mockInvokeAiderWrapper = sandbox.stub().resolves(mockNoTextResult)
++     const { handleMessageCreate } = proxyquire('../index', {
++       './lib/pythonWrapper': { invokeAiderWrapper: mockInvokeAiderWrapper }
++     })
++     const deleteStub = sandbox.stub().resolves()
++     const replyStub = sandbox.stub().resolves({ delete: deleteStub })
++     const mockMessage = {
++       author: { bot: false, id: 'user-id', tag: 'User#1234', username: 'NoTextUser' },
++       mentions: { has: (user) => user.id === mockClient.user.id },
++       content: `<@${mockClient.user.id}> trigger no text output`,
++       channelId: 'channel-with-repo',
++       reply: replyStub,
++       channel: { send: sandbox.fake(), id: 'channel-with-repo' }
+      }
+  
+  
+      // Assert
+-     st.ok(replyStub.calledOnceWith('Processing your request...'), 'Should send initial "Processing" reply')
++     st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
+      st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
+-     st.ok(sendStub.calledOnceWithMatch(/error processing your request for @FailUser: Simulated python error/i), 'channel.send should be called with error message')
++     st.ok(replyStub.calledWithMatch(/✅ Process completed successfully, but no text output was generated\./), 'Should reply with "success, no text" message')
+      st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
+      sandbox.restore()
+```
+
+---
+
+
+
+---
+
+Alright, Big D, the code and tests should now reflect the logic described in the tutorial.
+
+Next, I'll run `standard --fix` to ensure the code style is correct.
+
+---
+
+```bash
+npx standard --fix index.js test/mentionHandler.test.js
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+
+
+~/play/test/vibehive main
+
+```
+
+---
+
+
+
+---
+
+Code formatting applied.
+
+Finally, I'll run the tests to ensure everything is working as expected, Big D.
+
+---
+
+```bash
+npm test
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+
+> vibehive@1.0.0 test
+> tape test/**/*.test.js
+
+TAP version 13
+# ** Setup Add-Repo Tests **
+Attempting to connect Mongoose to mongodb://127.0.0.1:50523/ ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 1 Mongoose connected for Add-Repo command tests
+ok 2 Repository collection cleaned
+# /add-repo Command - Non-Admin
+ok 3 reply should be called once
+ok 4 Should reply with permission error
+ok 5 Permission error reply should be ephemeral
+ok 6 deferReply should not be called
+ok 7 followUp should not be called
+# /add-repo Command - Admin Success
+TEST: Repository config updated/created for channel channel-test-id: https://valid-repo.com/test.git
+ok 8 deferReply should be called once for admin
+ok 9 Defer reply should be ephemeral
+ok 10 followUp should be called once after deferral
+ok 11 Should followUp with success message and URL
+ok 12 Acknowledgement followUp should be ephemeral
+ok 13 reply should not be called directly on success
+ok 14 Document should exist in DB
+ok 15 Saved document should have the correct repoUrl
+# /add-repo Command - Missing URL (Should not happen if required)
+ok 16 reply should be called once for missing URL
+ok 17 Should reply with missing URL error
+ok 18 Missing URL error reply should be ephemeral
+ok 19 deferReply should not be called
+ok 20 followUp should not be called
+# Interaction Handler - Not in Guild
+ok 21 reply should be called once
+ok 22 Should reply with guild-only error
+ok 23 Guild-only error reply should be ephemeral
+ok 24 deferReply should not be called
+ok 25 followUp should not be called
+# Interaction Handler - Ignores Other Commands
+ok 26 ping reply should be called
+ok 27 Should reply Pong! for ping command
+ok 28 deferReply should not be called for ping
+ok 29 followUp should not be called for ping
+# /add-repo Command - Database Save Error
+TEST: Database error saving repository: Error: Simulated DB Error
+    at Test.<anonymous> (/Users/dguttman/play/test/vibehive/test/add-repo-command.test.js:233:82)
+    at Test.run (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/test.js:126:28)
+    at Immediate.next (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/results.js:158:7)
+    at process.processImmediate (node:internal/timers:478:21)
+ok 30 deferReply should be called
+ok 31 followUp should be called
+ok 32 Should reply with DB error message
+# ** Teardown Add-Repo Tests **
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 33 Mongoose disconnected and server stopped for Add-Repo tests
+# Aider Wrapper Script - Success Case
+ok 34 Script should exit without error (error code 0)
+ok 35 Stderr should be empty on success
+ok 36 Stdout should be valid JSON
+ok 37 Status should be success
+ok 38 Error field should be null
+ok 39 Events should be an array
+ok 40 Events array should have one element
+ok 41 Event type should be text_response
+ok 42 Event content should contain the prompt
+# Aider Wrapper Script - Error Case (Missing Prompt)
+ok 43 Script should exit with an error (non-zero code)
+ok 44 Exit code should be non-zero (was 2)
+ok 45 Stderr should contain the custom error message
+# Stdout content on error:
+# Stderr content on error: usage: aider_wrapper.py [-h] --prompt PROMPT
+# aider_wrapper.py: error: the following arguments are required: --prompt
+# Error: --prompt argument is required.
+# Mongoose Connection Setup
+ok 46 In-memory server should provide a base URI
+In-memory MongoDB started at mongodb://127.0.0.1:50528/
+# connectDB Function with Mongoose
+Attempting to connect Mongoose to mongodb://127.0.0.1:50528/mongoose-test-db ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 47 connectDB should return a DB instance
+ok 48 Mongoose connection name should match testDbName
+ok 49 Returned DB instance name should match testDbName
+Mongoose connection already established or connecting.
+ok 50 Calling connectDB again should return the same instance
+ok 51 Mongoose readyState should be 1 (connected)
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 52 Mongoose readyState should be 0 (disconnected) after closeDB
+# getDB Function with Mongoose
+ok 53 Mongoose readyState should be 0 before connection
+Attempting to connect Mongoose to mongodb://127.0.0.1:50528/mongoose-getdb-test ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 54 Mongoose readyState should be 1 after connection
+ok 55 getDB should return a DB instance after connection
+ok 56 DB instance from getDB should have the correct name
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 57 Mongoose readyState should be 0 after closing
+# Mongoose Connection Teardown
+ok 58 Mongoose readyState should remain 0 after second close
+Attempted closeDB again (should be safe).
+In-memory MongoDB stopped.
+ok 59 Teardown complete
+# Mention Handler Tests
+Mongoose connecting...
+Mongoose connected successfully.
+# Setup Complete
+ok 60 In-memory DB started and seeded
+# Ignores Bot Messages
+ok 61 invokeAiderWrapper should NOT be called for bot messages
+# No Mention
+ok 62 invokeAiderWrapper should NOT be called if bot is not mentioned
+# Mention, No Repo Configured
+Bot mentioned by User#1234 in channel mock-channel-id
+Extracted prompt: "what is this channel?"
+Mongoose connection already established or connecting.
+No repository configured for channel channel-without-repo
+ok 63 reply should be called once for "not configured" message
+ok 64 invokeAiderWrapper should NOT be called when no repo is configured
+# Mention, Repo Found, Wrapper Called Successfully (Text Response)
+Bot mentioned by User#1234 in channel channel-with-repo
+Extracted prompt: "do the thing"
+Mongoose connection already established or connecting.
+Found repository config for channel channel-with-repo: https://github.com/test/repo.git
+Sending text response to Discord: Mocked AI response
+ok 65 Should send initial "Processing" reply
+ok 66 invokeAiderWrapper called with correct prompt
+ok 67 Should send final response reply
+ok 68 Processing message should be deleted
+# Mention, Repo Found, Wrapper Fails (Execution Error)
+Bot mentioned by User#1234 in channel channel-with-repo
+Extracted prompt: "trigger failure"
+Mongoose connection already established or connecting.
+Found repository config for channel channel-with-repo: https://github.com/test/repo.git
+Python wrapper execution failed: { error: 'Simulated python execution error', stdout: 'stdout info' }
+ok 69 Should send initial "Processing" reply
+ok 70 invokeAiderWrapper should be called once
+ok 71 Should reply with generic wrapper error message
+ok 72 Processing message should be deleted
+# Mention, Repo Found, Script Fails (overall_status: failure)
+Bot mentioned by User#1234 in channel channel-with-repo
+Extracted prompt: "trigger script failure"
+Mongoose connection already established or connecting.
+Found repository config for channel channel-with-repo: https://github.com/test/repo.git
+Python script reported failure: Simulated script error within Python
+ok 73 Should send initial "Processing" reply
+ok 74 invokeAiderWrapper should be called once
+ok 75 Should reply with generic script error message
+ok 76 Processing message should be deleted
+# Mention, Repo Found, Success but No Text Response
+Bot mentioned by User#1234 in channel channel-with-repo
+Extracted prompt: "trigger no text output"
+Mongoose connection already established or connecting.
+Found repository config for channel channel-with-repo: https://github.com/test/repo.git
+Script execution succeeded, but no text_response event found.
+ok 77 Should send initial "Processing" reply
+ok 78 invokeAiderWrapper should be called once
+ok 79 Should reply with "success, no text" message
+ok 80 Processing message should be deleted
+# Mention Only (No Prompt)
+Bot mentioned by User#1234 in channel channel-with-repo
+Mention received without a prompt.
+ok 81 invokeAiderWrapper should NOT be called for mention only
+ok 82 Should reply with "no prompt" message
+# Ping Command Handler
+Mock Reply: Pong!
+ok 83 Should reply Pong! to /ping command
+ok 84 Should ignore non-ping commands
+# invokeAiderWrapper should return success for valid prompts
+Python script exited with code 0
+Stderr: 
+Stdout: {
+  "overall_status": "success",
+  "error": null,
+  "events": [
+    {
+      "type": "text_response",
+      "content": "Placeholder response for prompt: Write a hello world program in python"
+    }
+  ]
+}
+
+ok 85 Should return status success
+# invokeAiderWrapper should handle errors for invalid prompts
+ok 86 Should return status failure
+ok 87 Should return specific error message for empty prompt
+# invokeAiderWrapper should handle python script errors
+Python script exited with code 1
+Stderr: Simulated error triggered by prompt.
+Error: --prompt argument is required.
+
+Stdout: 
+ok 88 Should return status failure for script error
+# ** Setup Mongoose Connection **
+Mongoose connection already established or connecting.
+ok 89 Mongoose connected for Repository tests
+# Repository Model - Save Success
+ok 90 Should save successfully and return an _id
+ok 91 Saved repoUrl should match
+ok 92 Saved discordChannelId should match
+ok 93 Should have createdAt timestamp
+ok 94 Should have updatedAt timestamp
+# Repository Model - Validation Error (Missing repoUrl)
+ok 95 Error should be a Mongoose ValidationError
+ok 96 Error details should mention repoUrl
+ok 97 Error kind should be required
+# Repository Model - Validation Error (Missing discordChannelId)
+ok 98 Error should be a Mongoose ValidationError
+ok 99 Error details should mention discordChannelId
+# Repository Model - Uniqueness Error (discordChannelId)
+ok 100 First repository saved successfully
+ok 101 Error should indicate a duplicate key violation
+# ** Teardown Mongoose Connection **
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 102 Mongoose disconnected and server stopped
+
+1..102
+# tests 102
+# pass  102
+
+# ok
+
+
+
+~/play/test/vibehive main* 7s
+
+```
+
+---
+
+Excellent, Big D! All 102 tests are passing. The changes from the tutorial have been implemented successfully in both the application code (`index.js`) and the tests (`test/mentionHandler.test.js`).
+
+---
+
+_**User**_
+
+Create a new markdown file in the tutorials directory. It should be in the same style as previous tutorials. USE ls/tree to see the files in the codebase, and then write a detailed step-by-step tutorial that shows how to 
+@10.md 
+Finally, use ls and check if file has been created
+
+---
+
+_**Assistant**_
+
+
+
+---
+
 
 
 ---

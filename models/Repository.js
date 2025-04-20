@@ -17,6 +17,10 @@ const repositorySchema = new mongoose.Schema({
     required: [true, 'Discord Channel ID is required.'],
     unique: true, // Ensure only one repository per channel
     index: true // Index for faster lookups
+  },
+  contextFiles: {
+    type: [String],
+    default: []
   }
   // Add more fields as needed later (e.g., last commit checked, owner, etc.)
 }, {

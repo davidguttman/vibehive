@@ -785,6 +785,242 @@ _**Assistant**_
 
 ---
 
+Okay, Big D, I'll create the next tutorial file. First, let's check the existing files in the tutorials directory.
+
+---
+
+<details>
+            <summary>Listed directory docs/tutorials • **9** results</summary>
+        
+| Name |
+|-------|
+| 📄 `09-parse-response.md` |
+| 📄 `08-mention-handler.md` |
+| 📄 `07-node-python-wrapper.md` |
+| 📄 `06-aider-wrapper.md` |
+| 📄 `05-save-repo-data.md` |
+| 📄 `04-add-repo-command.md` |
+| 📄 `03-mongoose-schema.md` |
+| 📄 `02-mongodb-integration.md` |
+| 📄 `01-basic-discord-bot.md` |
+
+</details>
+
+---
+
+Got it. The next file should be `10-add-context-files.md`.
+
+Now, I'll read the prompt content from `docs/prompts/10.md`.
+
+---
+
+Read file: docs/prompts/10.md
+
+---
+
+Okay, Big D, I have the content. I'll create the new tutorial file `docs/tutorials/10-add-context-files.md` now.
+
+---
+
+```diff
+- 
++ # Tutorial 10: Add Context Files to Schema
++ 
++ Task: Add the `contextFiles` field to the Repository schema.
++ Requirements:
++ 1.  Modify `models/Repository.js` (from Prompt 3).
++ 2.  Add a new field to the `repositorySchema`:
++     -   `contextFiles`: { type: [String], default: [] }
++ 3.  Ensure existing model usage is not broken (Mongoose should handle the default).
++ 4.  Use standard.js style. Run `standard --fix`.
++ Testing:
++ -   Modify `test/repository.model.test.js` (from Prompt 3).
++ -   Test creating a new repository document. Assert that `contextFiles` exists and is an empty array by default.
++ -   Test updating an existing document to add file paths to `contextFiles`. Assert the update is successful.
++ -   Ensure tests run via `npm test`. 
+```
+
+---
+
+
+
+---
+
+Finally, I'll check the directory to confirm the file was created, Big D.
+
+---
+
+<details>
+            <summary>Listed directory docs/tutorials • **10** results</summary>
+        
+| Name |
+|-------|
+| 📄 `10-add-context-files.md` |
+| 📄 `09-parse-response.md` |
+| 📄 `08-mention-handler.md` |
+| 📄 `07-node-python-wrapper.md` |
+| 📄 `06-aider-wrapper.md` |
+| 📄 `05-save-repo-data.md` |
+| 📄 `04-add-repo-command.md` |
+| 📄 `03-mongoose-schema.md` |
+| 📄 `02-mongodb-integration.md` |
+| 📄 `01-basic-discord-bot.md` |
+
+</details>
+
+---
+
+Confirmed, Big D. The file `docs/tutorials/10-add-context-files.md` has been created successfully.
+
+---
+
+_**User**_
+
+first ls/tree the codebase, then follow the tutorial to implement the changes to codebase 
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+Okay, Big D, let's get started. First, I'll check the codebase structure.
+
+---
+
+```bash
+tree -I node_modules
+```
+
+```
+.
+├── README.md
+├── aider_wrapper.py
+├── config.js
+├── docs
+│   ├── prompts
+│   │   ├── 01.md
+│   │   ├── 02.md
+│   │   ├── 03.md
+│   │   ├── 04.md
+│   │   ├── 05.md
+│   │   ├── 06.md
+│   │   ├── 07.md
+│   │   ├── 08.md
+│   │   ├── 09.md
+│   │   ├── 10.md
+│   │   ├── 11.md
+│   │   ├── 12.md
+│   │   ├── 13.md
+│   │   ├── 14.md
+│   │   ├── 15.md
+│   │   ├── 16.md
+│   │   ├── 17.md
+│   │   ├── 18.md
+│   │   ├── 19.md
+│   │   ├── 20.md
+│   │   ├── 21.md
+│   │   ├── 22.md
+│   │   ├── 23.md
+│   │   ├── 24.md
+│   │   ├── 25.md
+│   │   ├── 26.md
+│   │   ├── 27.md
+│   │   ├── 28.md
+│   │   ├── 29.md
+│   │   ├── 30.md
+│   │   ├── 31.md
+│   │   ├── 32.md
+│   │   ├── 33.md
+│   │   ├── 34.md
+│   │   ├── 35.md
+│   │   ├── 36.md
+│   │   └── 37.md
+│   └── tutorials
+│       ├── 01-basic-discord-bot.md
+│       ├── 02-mongodb-integration.md
+│       ├── 03-mongoose-schema.md
+│       ├── 04-add-repo-command.md
+│       ├── 05-save-repo-data.md
+│       ├── 06-aider-wrapper.md
+│       ├── 07-node-python-wrapper.md
+│       ├── 08-mention-handler.md
+│       ├── 09-parse-response.md
+│       └── 10-add-context-files.md
+├── index.js
+├── lib
+│   ├── mongo.js
+│   └── pythonWrapper.js
+├── models
+│   └── Repository.js
+├── package-lock.json
+├── package.json
+├── spec.md
+└── test
+    ├── add-repo-command.test.js
+    ├── aider_wrapper.test.js
+    ├── db.test.js
+    ├── mentionHandler.test.js
+    ├── ping.test.js
+    ├── pythonWrapper.test.js
+    └── repository.model.test.js
+
+6 directories, 64 files
+
+
+~/play/test/vibehive main*
+
+```
+
+---
+
+Structure confirmed. Now, I'll read the model file `models/Repository.js`.
+
+---
+
+Read file: models/Repository.js
+
+---
+
+Okay, Big D, I have the model code. I'll add the `contextFiles` field to the schema as requested in the tutorial.
+
+---
+
+```diff
+      unique: true, // Ensure only one repository per channel
+      index: true // Index for faster lookups
++   },
++   contextFiles: {
++     type: [String],
++     default: []
+    }
+    // Add more fields as needed later (e.g., last commit checked, owner, etc.)
+```
+
+---
+
+
+
+---
+
+Model updated. Now I'll read the corresponding test file, `test/repository.model.test.js`.
+
+---
+
+Read file: test/repository.model.test.js
+
+---
+
+
+
+---
+
+Got the test file. I'll add the new test cases for the `contextFiles` field. This includes checking the default value and testing an update operation.
+
+---
+
 
 
 ---

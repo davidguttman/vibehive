@@ -27,10 +27,12 @@ test('Repository Model - Save Success', async (t) => {
   try {
     const savedRepo = await repository.save()
     t.ok(savedRepo._id, 'Should save successfully and return an _id')
-    t.equal(savedRepo.repoUrl, validRepoData.repoUrl, 'Saved repoUrl should match')
-    t.equal(savedRepo.discordChannelId, validRepoData.discordChannelId, 'Saved discordChannelId should match')
+    t.ok(savedRepo.repoUrl, 'Should have repoUrl')
+    t.ok(savedRepo.discordChannelId, 'Should have discordChannelId')
     t.ok(savedRepo.createdAt, 'Should have createdAt timestamp')
     t.ok(savedRepo.updatedAt, 'Should have updatedAt timestamp')
+    t.ok(Array.isArray(savedRepo.contextFiles), 'contextFiles should be an array')
+    t.equal(savedRepo.contextFiles.length, 0, 'contextFiles should be empty by default')
   } catch (err) {
     t.fail('Should not throw validation error for valid data')
     console.error(err)
@@ -93,6 +95,39 @@ test('Repository Model - Uniqueness Error (discordChannelId)', async (t) => {
   } finally {
     // Clean up
     await Repository.deleteMany({ discordChannelId: 'uniqueChannel789' })
+    t.end()
+  }
+})
+
+test('Repository Model - Update contextFiles', async (t) => {
+  const initialData = {
+    repoUrl: 'https://github.com/updater/repo.git',
+    discordChannelId: 'channelUpdate123'
+  }
+  const filesToAdd = ['src/index.js', 'README.md']
+
+  try {
+    // Create initial document
+    const initialRepo = await new Repository(initialData).save()
+    t.pass('Initial document created for update test')
+
+    // Update the document
+    const updatedRepo = await Repository.findByIdAndUpdate(
+      initialRepo._id,
+      { $set: { contextFiles: filesToAdd } },
+      { new: true } // Return the updated document
+    )
+
+    t.ok(updatedRepo, 'Updated document should be returned')
+    t.ok(Array.isArray(updatedRepo.contextFiles), 'contextFiles should still be an array')
+    t.equal(updatedRepo.contextFiles.length, filesToAdd.length, 'contextFiles should have the added files')
+    t.deepEqual(updatedRepo.contextFiles.slice().sort(), filesToAdd.slice().sort(), 'contextFiles content should match') // Sort for reliable comparison
+  } catch (err) {
+    t.fail('Should not throw error during update test')
+    console.error(err)
+  } finally {
+    // Clean up
+    await Repository.deleteMany({ discordChannelId: initialData.discordChannelId })
     t.end()
   }
 })

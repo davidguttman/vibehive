@@ -743,7 +743,1095 @@ Finally, I'll run the tests to make sure everything is working as expected. Reme
 
 Ah, I see a problem. My current `lib/crypto.js` still runs the environment variable check at the top level *before* exporting the functions. This means requiring the module in the test file *will* throw an error if `ENCRYPTION_KEY` isn't set, even though the test functions themselves pass the key explicitly.
 
-To fix this and adhere strictly to the "no env var dependency in tests" rule, I need to refactor `lib/crypto.js` slightly.
+To fix this and adhere strictly to the "no env var dependency in tests" rule, I need to refactor `lib/crypto.js` slightly. The check for `process.env.ENCRYPTION_KEY` should happen *inside* the functions *only when the default key is used*.
+
+Let me refactor `lib/crypto.js` first.
+
+---
+
+```diff
+  const crypto = require('node:crypto')
+  
+- const ENV_KEY = process.env.ENCRYPTION_KEY // Must be 256 bits (32 characters)
+  const IV_LENGTH = 16 // For AES, this is always 16
+  
+- // Check the key loaded from the environment on startup
+- if (!ENV_KEY || ENV_KEY.length !== 32) {
++ // Function to get the key, checking env var only if needed
++ function getKey (providedKey) {
++   const key = providedKey || process.env.ENCRYPTION_KEY
++   if (!key || key.length !== 32) {
++     if (!providedKey) {
++       // Only throw if the key wasn't explicitly provided (i.e., we relied on env)
+        throw new Error('Missing or invalid ENCRYPTION_KEY environment variable. It must be 32 characters long.')
++     } else {
++       // Throw if an invalid key was explicitly passed
++       throw new Error('Invalid encryption key provided. It must be 32 characters long.')
+      }
+- 
+- function encrypt (text, key = ENV_KEY) {
+-   // Ensure the provided key (if any) is valid, otherwise default is already checked
+-   if (key !== ENV_KEY && (!key || key.length !== 32)) {
+-     throw new Error('Invalid encryption key provided to encrypt function. It must be 32 characters long.')
+    }
++   return key
++ }
++ 
++ function encrypt (text, providedKey) {
++   const key = getKey(providedKey)
+    const iv = crypto.randomBytes(IV_LENGTH)
+    const cipher = crypto.createCipheriv('aes-256-cbc', Buffer.from(key), iv)
+  }
+  
+- function decrypt (text, key = ENV_KEY) {
+-   // Ensure the provided key (if any) is valid
+-   if (key !== ENV_KEY && (!key || key.length !== 32)) {
+-     throw new Error('Invalid encryption key provided to decrypt function. It must be 32 characters long.')
++ function decrypt (text, providedKey) {
++   const key = getKey(providedKey)
++   try {
++     if (typeof text !== 'string') {
++       throw new Error('Input must be a string.')
+      }
+-   try {
+      const textParts = text.split(':')
+      if (textParts.length !== 2) {
+        throw new Error('Invalid encrypted text format.')
+      }
+-     const iv = Buffer.from(textParts[0], 'hex')
++     const ivHex = textParts[0]
++     const encryptedHex = textParts[1]
++ 
++     // Validate hex format before creating buffers
++     if (!/^[0-9a-fA-F]+$/.test(ivHex) || !/^[0-9a-fA-F]+$/.test(encryptedHex)) {
++         throw new Error('Invalid hex string format.')
++     }
++ 
++     const iv = Buffer.from(ivHex, 'hex')
+      // Ensure IV is correct length
+      if (iv.length !== IV_LENGTH) {
+        throw new Error('Invalid IV length.')
+      }
+-     const encryptedText = Buffer.from(textParts[1], 'hex')
++     const encryptedText = Buffer.from(encryptedHex, 'hex')
+      const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key), iv)
+      let decrypted = decipher.update(encryptedText)
+```
+
+---
+
+
+
+---
+
+
+
+---
+
+It seems the automatic edit didn't fix the indentation. I'll try reapplying the change with the smarter model.
+
+---
+
+
+
+---
+
+It seems like the reapply didn't catch the indentation issue either. I'll explicitly fix line 46.
+
+---
+
+
+
+---
+
+It seems I'm having trouble fixing that specific linting error automatically, Big D. I'll skip the explicit fix for now and try running `standard --fix` again, maybe that will catch it this time along with any other potential issues from the refactor.
+
+---
+
+```bash
+npx standard --fix
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+
+
+~/play/test/vibehive main*
+
+```
+
+---
+
+Okay, Big D, `standard --fix` ran again. Now, let's run the tests with `npm test`. This will confirm if the implementation works and if the refactor successfully decoupled the tests from the environment variable.
+
+---
+
+```bash
+npm test
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+
+> vibehive@1.0.0 test
+> tape test/**/*.test.js
+
+TAP version 13
+# ** Setup Add-Repo Tests **
+Attempting to connect Mongoose to mongodb://127.0.0.1:53422/ ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 1 Mongoose connected for Add-Repo command tests
+ok 2 Repository collection cleaned
+# /add-repo Command - Non-Admin
+ok 3 reply should be called once
+ok 4 Should reply with permission error
+ok 5 Permission error reply should be ephemeral
+ok 6 deferReply should not be called
+ok 7 followUp should not be called
+# /add-repo Command - Admin Success
+TEST: Repository config updated/created for channel channel-test-id: https://valid-repo.com/test.git
+ok 8 deferReply should be called once for admin
+ok 9 Defer reply should be ephemeral
+ok 10 followUp should be called once after deferral
+ok 11 Should followUp with success message and URL
+ok 12 Acknowledgement followUp should be ephemeral
+ok 13 reply should not be called directly on success
+ok 14 Document should exist in DB
+ok 15 Saved document should have the correct repoUrl
+# /add-repo Command - Missing URL (Should not happen if required)
+ok 16 reply should be called once for missing URL
+ok 17 Should reply with missing URL error
+ok 18 Missing URL error reply should be ephemeral
+ok 19 deferReply should not be called
+ok 20 followUp should not be called
+# Interaction Handler - Not in Guild
+ok 21 reply should be called once
+ok 22 Should reply with guild-only error
+ok 23 Guild-only error reply should be ephemeral
+ok 24 deferReply should not be called
+ok 25 followUp should not be called
+# Interaction Handler - Ignores Other Commands
+ok 26 ping reply should be called
+ok 27 Should reply Pong! for ping command
+ok 28 deferReply should not be called for ping
+ok 29 followUp should not be called for ping
+# /add-repo Command - Database Save Error
+TEST: Database error saving repository: Error: Simulated DB Error
+    at Test.<anonymous> (/Users/dguttman/play/test/vibehive/test/add-repo-command.test.js:233:82)
+    at Test.run (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/test.js:126:28)
+    at Immediate.next (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/results.js:158:7)
+    at process.processImmediate (node:internal/timers:478:21)
+ok 30 deferReply should be called
+ok 31 followUp should be called
+ok 32 Should reply with DB error message
+# ** Teardown Add-Repo Tests **
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 33 Mongoose disconnected and server stopped for Add-Repo tests
+# Aider Wrapper Script - Success Case
+ok 34 Script should exit without error (error code 0)
+ok 35 Stderr should be empty on success
+ok 36 Stdout should be valid JSON
+ok 37 Status should be success
+ok 38 Error field should be null
+ok 39 Events should be an array
+ok 40 Events array should have one element
+ok 41 Event type should be text_response
+ok 42 Event content should contain the prompt
+# Aider Wrapper Script - Success Case with Context Files
+ok 43 Script should exit without error (error code 0)
+ok 44 Stderr should be empty on success
+ok 45 Stdout should be valid JSON
+ok 46 Status should be success
+ok 47 Error field should be null
+ok 48 Events should be an array
+ok 49 Events array should have at least one element
+ok 50 First event type should be text_response
+ok 51 Event content should contain the prompt
+ok 52 Output should contain received_context_files field
+ok 53 received_context_files should match input context files
+# Aider Wrapper Script - Error Case (Missing Prompt)
+ok 54 Script should exit with an error (non-zero code)
+ok 55 Exit code should be non-zero (was 2)
+ok 56 Stderr should contain the custom error message
+# Stdout content on error:
+# Stderr content on error: usage: aider_wrapper.py [-h] --prompt PROMPT [--context-file CONTEXT_FILE]
+# aider_wrapper.py: error: the following arguments are required: --prompt
+# Error: --prompt argument is required.
+# Setup In-Memory MongoDB and Discord Client
+ok 57 In-memory MongoDB server started for contextCommands tests
+ok 58 Loaded event handler: interactionCreate
+# Context Commands: Setup Data
+Attempting to connect Mongoose to mongodb://127.0.0.1:53426/ ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 59 Ensured DB connection for Setup Data
+ok 60 Dropped repositories collection (if existed)
+DEBUG: Inserting initial repos: [{"discordChannelId":"files-channel-1","repoUrl":"git@github.com:test/files-repo.git
+","contextFiles":["file1.js","src/file2.ts"]},{"discordChannelId":"files-channel-2","repoUrl":"git@github.com:test/f
+iles-repo-empty.git","contextFiles":[]},{"discordChannelId":"add-channel-1","repoUrl":"git@github.com:test/repo-add.
+git","contextFiles":["existing.txt"]},{"discordChannelId":"add-channel-2","repoUrl":"git@github.com:test/repo-add-in
+valid.git","contextFiles":[]},{"discordChannelId":"drop-channel-1","repoUrl":"git@github.com:test/repo-drop.git","co
+ntextFiles":["keep.js","remove.txt","another/to_remove.css"]},{"discordChannelId":"drop-channel-2","repoUrl":"git@gi
+thub.com:test/repo-drop-none.git","contextFiles":["file1.js","file2.js"]}]
+ok 61 Inserted initial repository data
+# Context Commands: /files
+# Interaction replied: {"content":"**Files in context:**\n`file1.js`\n`src/file2.ts`","ephemeral":true}
+ok 62 Reply should be ephemeral
+ok 63 Reply contains header
+ok 64 Reply contains file1.js
+ok 65 Reply contains src/file2.ts
+# Context Commands: /files (no files)
+# Interaction replied: {"content":"No files currently in context.","ephemeral":true}
+ok 66 Reply should be ephemeral
+ok 67 Reply indicates no files
+# Context Commands: /files (no repo)
+# Interaction replied: {"content":"No repository configured for this channel.","ephemeral":true}
+ok 68 Reply should be ephemeral
+ok 69 Reply indicates no repo
+# Context Commands: /add
+# Interaction replied: {"content":"Attempted to add files: `new/file.js`, `another.txt`, `existing.txt`. Use `/files
+` to see the updated list.","ephemeral":true}
+ok 70 Reply should be ephemeral
+ok 71 Reply confirms added files
+ok 72 Repo should exist
+ok 73 Database contains correct files (including existing, ignoring duplicate add)
+# Context Commands: /add (invalid paths)
+# Interaction replied: {"content":"Error: Invalid paths detected: `/etc/passwd`, `../../secrets.txt`. Paths cannot s
+tart with / or contain ..","ephemeral":true}
+ok 74 Reply should be ephemeral
+ok 75 Reply indicates invalid paths
+ok 76 Repo should exist
+ok 77 Database should remain unchanged after invalid add attempt
+# Context Commands: /add (no repo)
+# Interaction replied: {"content":"No repository configured for this channel.","ephemeral":true}
+ok 78 Reply should be ephemeral
+ok 79 Reply indicates no repo
+# Context Commands: /drop
+# Interaction replied: {"content":"Removed files: `remove.txt`, `not_present.py`, `another/to_remove.css`. Use `/fil
+es` to see the updated list.","ephemeral":true}
+ok 80 Reply should be ephemeral
+ok 81 Reply confirms removed files (even if not present)
+ok 82 Repo should exist
+ok 83 Database contains only the remaining file
+# Context Commands: /drop (no files match)
+# Interaction replied: {"content":"None of the specified files (`nonexistent.txt`, `another.css`) were found in the 
+context list.","ephemeral":true}
+ok 84 Reply should be ephemeral
+ok 85 Reply indicates no files were found to remove
+ok 86 Repo should exist
+ok 87 Database should remain unchanged
+# Context Commands: /drop (no repo)
+# Interaction replied: {"content":"No repository configured for this channel.","ephemeral":true}
+ok 88 Reply should be ephemeral
+ok 89 Reply indicates no repo
+# Crypto Module - Encryption/Decryption Round Trip
+/Users/dguttman/play/test/vibehive/lib/crypto.js:14
+      throw new Error('Invalid encryption key provided. It must be 32 characters long.')
+      ^
+
+Error: Invalid encryption key provided. It must be 32 characters long.
+    at getKey (/Users/dguttman/play/test/vibehive/lib/crypto.js:14:13)
+    at Object.encrypt (/Users/dguttman/play/test/vibehive/lib/crypto.js:21:15)
+    at Test.<anonymous> (/Users/dguttman/play/test/vibehive/test/crypto.test.js:12:32)
+    at Test.run (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/test.js:126:28)
+    at Immediate.next (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/results.js:158:7)
+    at process.processImmediate (node:internal/timers:478:21)
+
+Node.js v20.11.1
+
+
+~/play/test/vibehive main*
+
+```
+
+---
+
+Ah, it seems the tests failed, Big D. Looking at the error:
+
+```
+Error: Invalid encryption key provided. It must be 32 characters long.
+    at getKey (/Users/dguttman/play/test/vibehive/lib/crypto.js:14:13)
+    at Object.encrypt (/Users/dguttman/play/test/vibehive/test/crypto.test.js:12:32)
+```
+
+It looks like the `getKey` function in `lib/crypto.js` is throwing an error because it thinks the key *provided* to the `encrypt` function in the test is invalid. Let me check the test file (`test/crypto.test.js`) and the `getKey` logic again.
+
+---
+
+Read file: test/crypto.test.js
+
+---
+
+Read file: lib/crypto.js
+
+---
+
+Okay, Big D, I see the issue.
+
+In `test/crypto.test.js`, the key `TEST_KEY` is `'a_dummy_32_character_key_123456'`. That key is 31 characters long, not 32!
+
+The `getKey` function correctly identifies this invalid length when the key is provided and throws the error: `Invalid encryption key provided. It must be 32 characters long.`
+
+I need to fix the `TEST_KEY` in `test/crypto.test.js` to be exactly 32 characters long. Let's add one more character.
+
+---
+
+```diff
+  
+  // Use a consistent, valid key for testing
+- const TEST_KEY = 'a_dummy_32_character_key_123456'
++ const TEST_KEY = 'a_dummy_32_character_key_1234567'
+  
+  test('Crypto Module - Encryption/Decryption Round Trip', (t) => {
+```
+
+---
+
+Now that the test key is fixed, I'll run `npm test` again.
+
+---
+
+```bash
+npm test
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+
+> vibehive@1.0.0 test
+> tape test/**/*.test.js
+
+TAP version 13
+# ** Setup Add-Repo Tests **
+Attempting to connect Mongoose to mongodb://127.0.0.1:53439/ ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 1 Mongoose connected for Add-Repo command tests
+ok 2 Repository collection cleaned
+# /add-repo Command - Non-Admin
+ok 3 reply should be called once
+ok 4 Should reply with permission error
+ok 5 Permission error reply should be ephemeral
+ok 6 deferReply should not be called
+ok 7 followUp should not be called
+# /add-repo Command - Admin Success
+TEST: Repository config updated/created for channel channel-test-id: https://valid-repo.com/test.git
+ok 8 deferReply should be called once for admin
+ok 9 Defer reply should be ephemeral
+ok 10 followUp should be called once after deferral
+ok 11 Should followUp with success message and URL
+ok 12 Acknowledgement followUp should be ephemeral
+ok 13 reply should not be called directly on success
+ok 14 Document should exist in DB
+ok 15 Saved document should have the correct repoUrl
+# /add-repo Command - Missing URL (Should not happen if required)
+ok 16 reply should be called once for missing URL
+ok 17 Should reply with missing URL error
+ok 18 Missing URL error reply should be ephemeral
+ok 19 deferReply should not be called
+ok 20 followUp should not be called
+# Interaction Handler - Not in Guild
+ok 21 reply should be called once
+ok 22 Should reply with guild-only error
+ok 23 Guild-only error reply should be ephemeral
+ok 24 deferReply should not be called
+ok 25 followUp should not be called
+# Interaction Handler - Ignores Other Commands
+ok 26 ping reply should be called
+ok 27 Should reply Pong! for ping command
+ok 28 deferReply should not be called for ping
+ok 29 followUp should not be called for ping
+# /add-repo Command - Database Save Error
+TEST: Database error saving repository: Error: Simulated DB Error
+    at Test.<anonymous> (/Users/dguttman/play/test/vibehive/test/add-repo-command.test.js:233:82)
+    at Test.run (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/test.js:126:28)
+    at Immediate.next (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/results.js:158:7)
+    at process.processImmediate (node:internal/timers:478:21)
+ok 30 deferReply should be called
+ok 31 followUp should be called
+ok 32 Should reply with DB error message
+# ** Teardown Add-Repo Tests **
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 33 Mongoose disconnected and server stopped for Add-Repo tests
+# Aider Wrapper Script - Success Case
+ok 34 Script should exit without error (error code 0)
+ok 35 Stderr should be empty on success
+ok 36 Stdout should be valid JSON
+ok 37 Status should be success
+ok 38 Error field should be null
+ok 39 Events should be an array
+ok 40 Events array should have one element
+ok 41 Event type should be text_response
+ok 42 Event content should contain the prompt
+# Aider Wrapper Script - Success Case with Context Files
+ok 43 Script should exit without error (error code 0)
+ok 44 Stderr should be empty on success
+ok 45 Stdout should be valid JSON
+ok 46 Status should be success
+ok 47 Error field should be null
+ok 48 Events should be an array
+ok 49 Events array should have at least one element
+ok 50 First event type should be text_response
+ok 51 Event content should contain the prompt
+ok 52 Output should contain received_context_files field
+ok 53 received_context_files should match input context files
+# Aider Wrapper Script - Error Case (Missing Prompt)
+ok 54 Script should exit with an error (non-zero code)
+ok 55 Exit code should be non-zero (was 2)
+ok 56 Stderr should contain the custom error message
+# Stdout content on error:
+# Stderr content on error: usage: aider_wrapper.py [-h] --prompt PROMPT [--context-file CONTEXT_FILE]
+# aider_wrapper.py: error: the following arguments are required: --prompt
+# Error: --prompt argument is required.
+# Setup In-Memory MongoDB and Discord Client
+ok 57 In-memory MongoDB server started for contextCommands tests
+ok 58 Loaded event handler: interactionCreate
+# Context Commands: Setup Data
+Attempting to connect Mongoose to mongodb://127.0.0.1:53443/ ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 59 Ensured DB connection for Setup Data
+ok 60 Dropped repositories collection (if existed)
+DEBUG: Inserting initial repos: [{"discordChannelId":"files-channel-1","repoUrl":"git@github.com:test/files-repo.git
+","contextFiles":["file1.js","src/file2.ts"]},{"discordChannelId":"files-channel-2","repoUrl":"git@github.com:test/f
+iles-repo-empty.git","contextFiles":[]},{"discordChannelId":"add-channel-1","repoUrl":"git@github.com:test/repo-add.
+git","contextFiles":["existing.txt"]},{"discordChannelId":"add-channel-2","repoUrl":"git@github.com:test/repo-add-in
+valid.git","contextFiles":[]},{"discordChannelId":"drop-channel-1","repoUrl":"git@github.com:test/repo-drop.git","co
+ntextFiles":["keep.js","remove.txt","another/to_remove.css"]},{"discordChannelId":"drop-channel-2","repoUrl":"git@gi
+thub.com:test/repo-drop-none.git","contextFiles":["file1.js","file2.js"]}]
+ok 61 Inserted initial repository data
+# Context Commands: /files
+# Interaction replied: {"content":"**Files in context:**\n`file1.js`\n`src/file2.ts`","ephemeral":true}
+ok 62 Reply should be ephemeral
+ok 63 Reply contains header
+ok 64 Reply contains file1.js
+ok 65 Reply contains src/file2.ts
+# Context Commands: /files (no files)
+# Interaction replied: {"content":"No files currently in context.","ephemeral":true}
+ok 66 Reply should be ephemeral
+ok 67 Reply indicates no files
+# Context Commands: /files (no repo)
+# Interaction replied: {"content":"No repository configured for this channel.","ephemeral":true}
+ok 68 Reply should be ephemeral
+ok 69 Reply indicates no repo
+# Context Commands: /add
+# Interaction replied: {"content":"Attempted to add files: `new/file.js`, `another.txt`, `existing.txt`. Use `/files
+` to see the updated list.","ephemeral":true}
+ok 70 Reply should be ephemeral
+ok 71 Reply confirms added files
+ok 72 Repo should exist
+ok 73 Database contains correct files (including existing, ignoring duplicate add)
+# Context Commands: /add (invalid paths)
+# Interaction replied: {"content":"Error: Invalid paths detected: `/etc/passwd`, `../../secrets.txt`. Paths cannot s
+tart with / or contain ..","ephemeral":true}
+ok 74 Reply should be ephemeral
+ok 75 Reply indicates invalid paths
+ok 76 Repo should exist
+ok 77 Database should remain unchanged after invalid add attempt
+# Context Commands: /add (no repo)
+# Interaction replied: {"content":"No repository configured for this channel.","ephemeral":true}
+ok 78 Reply should be ephemeral
+ok 79 Reply indicates no repo
+# Context Commands: /drop
+# Interaction replied: {"content":"Removed files: `remove.txt`, `not_present.py`, `another/to_remove.css`. Use `/fil
+es` to see the updated list.","ephemeral":true}
+ok 80 Reply should be ephemeral
+ok 81 Reply confirms removed files (even if not present)
+ok 82 Repo should exist
+ok 83 Database contains only the remaining file
+# Context Commands: /drop (no files match)
+# Interaction replied: {"content":"None of the specified files (`nonexistent.txt`, `another.css`) were found in the 
+context list.","ephemeral":true}
+ok 84 Reply should be ephemeral
+ok 85 Reply indicates no files were found to remove
+ok 86 Repo should exist
+ok 87 Database should remain unchanged
+# Context Commands: /drop (no repo)
+# Interaction replied: {"content":"No repository configured for this channel.","ephemeral":true}
+ok 88 Reply should be ephemeral
+ok 89 Reply indicates no repo
+# Crypto Module - Encryption/Decryption Round Trip
+ok 90 Encrypt should return a string containing a colon
+ok 91 Decrypted text should match original text
+# Crypto Module - Decrypt Invalid Input
+Decryption failed: Invalid encrypted text format.
+ok 92 Decrypt should return null for invalid input format
+Decryption failed: Invalid IV length.
+ok 93 Decrypt should return null for input causing crypto errors
+/Users/dguttman/play/test/vibehive/lib/crypto.js:14
+      throw new Error('Invalid encryption key provided. It must be 32 characters long.')
+      ^
+
+Error: Invalid encryption key provided. It must be 32 characters long.
+    at getKey (/Users/dguttman/play/test/vibehive/lib/crypto.js:14:13)
+    at Object.decrypt (/Users/dguttman/play/test/vibehive/lib/crypto.js:32:15)
+    at Test.<anonymous> (/Users/dguttman/play/test/vibehive/test/crypto.test.js:39:40)
+    at Test.run (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/test.js:126:28)
+    at Immediate.next (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/results.js:158:7)
+    at process.processImmediate (node:internal/timers:478:21)
+
+Node.js v20.11.1
+
+
+~/play/test/vibehive main*
+
+```
+
+---
+
+Okay, Big D, another failure, but different this time.
+
+The error is happening in the "Decrypt Invalid Input" test:
+```
+Error: Invalid encryption key provided. It must be 32 characters long.
+    at getKey (/Users/dguttman/play/test/vibehive/lib/crypto.js:14:13)
+    at Object.decrypt (/Users/dguttman/play/test/vibehive/lib/crypto.js:32:15)
+    at Test.<anonymous> (/Users/dguttman/play/test/vibehive/test/crypto.test.js:39:40)
+```
+Line 39 in `test/crypto.test.js` is where we test decrypting with the wrong key:
+```javascript
+  const wrongKey = 'another_dummy_32_character_key_' // This is 31 chars!
+  const decryptedWithWrongKey = crypto.decrypt(encryptedWithGoodKey, wrongKey)
+```
+It seems I made the same mistake again! The `wrongKey` used in the test is also 31 characters, not 32. The `getKey` function is correctly rejecting it.
+
+I need to fix this `wrongKey` in `test/crypto.test.js` to be a *valid* 32-character key, just different from `TEST_KEY`.
+
+---
+
+```diff
+    const originalText = 'Another secret'
+    const encryptedWithGoodKey = crypto.encrypt(originalText, TEST_KEY)
+-   const wrongKey = 'another_dummy_32_character_key_'
++   const wrongKey = '12345678901234567890123456789012' // A *different* valid 32-char key
+    const decryptedWithWrongKey = crypto.decrypt(encryptedWithGoodKey, wrongKey)
+    // Decryption with the wrong key should fail and return null (or throw, but we return null)
+```
+
+---
+
+
+
+---
+
+Alright, Big D, the `wrongKey` in the test file should now be a valid 32-character string.
+
+Let's try `npm test` one more time.
+
+---
+
+```bash
+npm test
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+
+> vibehive@1.0.0 test
+> tape test/**/*.test.js
+
+TAP version 13
+# ** Setup Add-Repo Tests **
+Attempting to connect Mongoose to mongodb://127.0.0.1:53454/ ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 1 Mongoose connected for Add-Repo command tests
+ok 2 Repository collection cleaned
+# /add-repo Command - Non-Admin
+ok 3 reply should be called once
+ok 4 Should reply with permission error
+ok 5 Permission error reply should be ephemeral
+ok 6 deferReply should not be called
+ok 7 followUp should not be called
+# /add-repo Command - Admin Success
+TEST: Repository config updated/created for channel channel-test-id: https://valid-repo.com/test.git
+ok 8 deferReply should be called once for admin
+ok 9 Defer reply should be ephemeral
+ok 10 followUp should be called once after deferral
+ok 11 Should followUp with success message and URL
+ok 12 Acknowledgement followUp should be ephemeral
+ok 13 reply should not be called directly on success
+ok 14 Document should exist in DB
+ok 15 Saved document should have the correct repoUrl
+# /add-repo Command - Missing URL (Should not happen if required)
+ok 16 reply should be called once for missing URL
+ok 17 Should reply with missing URL error
+ok 18 Missing URL error reply should be ephemeral
+ok 19 deferReply should not be called
+ok 20 followUp should not be called
+# Interaction Handler - Not in Guild
+ok 21 reply should be called once
+ok 22 Should reply with guild-only error
+ok 23 Guild-only error reply should be ephemeral
+ok 24 deferReply should not be called
+ok 25 followUp should not be called
+# Interaction Handler - Ignores Other Commands
+ok 26 ping reply should be called
+ok 27 Should reply Pong! for ping command
+ok 28 deferReply should not be called for ping
+ok 29 followUp should not be called for ping
+# /add-repo Command - Database Save Error
+TEST: Database error saving repository: Error: Simulated DB Error
+    at Test.<anonymous> (/Users/dguttman/play/test/vibehive/test/add-repo-command.test.js:233:82)
+    at Test.run (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/test.js:126:28)
+    at Immediate.next (/Users/dguttman/play/test/vibehive/node_modules/tape/lib/results.js:158:7)
+    at process.processImmediate (node:internal/timers:478:21)
+ok 30 deferReply should be called
+ok 31 followUp should be called
+ok 32 Should reply with DB error message
+# ** Teardown Add-Repo Tests **
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 33 Mongoose disconnected and server stopped for Add-Repo tests
+# Aider Wrapper Script - Success Case
+ok 34 Script should exit without error (error code 0)
+ok 35 Stderr should be empty on success
+ok 36 Stdout should be valid JSON
+ok 37 Status should be success
+ok 38 Error field should be null
+ok 39 Events should be an array
+ok 40 Events array should have one element
+ok 41 Event type should be text_response
+ok 42 Event content should contain the prompt
+# Aider Wrapper Script - Success Case with Context Files
+ok 43 Script should exit without error (error code 0)
+ok 44 Stderr should be empty on success
+ok 45 Stdout should be valid JSON
+ok 46 Status should be success
+ok 47 Error field should be null
+ok 48 Events should be an array
+ok 49 Events array should have at least one element
+ok 50 First event type should be text_response
+ok 51 Event content should contain the prompt
+ok 52 Output should contain received_context_files field
+ok 53 received_context_files should match input context files
+# Aider Wrapper Script - Error Case (Missing Prompt)
+ok 54 Script should exit with an error (non-zero code)
+ok 55 Exit code should be non-zero (was 2)
+ok 56 Stderr should contain the custom error message
+# Stdout content on error:
+# Stderr content on error: usage: aider_wrapper.py [-h] --prompt PROMPT [--context-file CONTEXT_FILE]
+# aider_wrapper.py: error: the following arguments are required: --prompt
+# Error: --prompt argument is required.
+# Setup In-Memory MongoDB and Discord Client
+ok 57 In-memory MongoDB server started for contextCommands tests
+ok 58 Loaded event handler: interactionCreate
+# Context Commands: Setup Data
+Attempting to connect Mongoose to mongodb://127.0.0.1:53458/ ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 59 Ensured DB connection for Setup Data
+ok 60 Dropped repositories collection (if existed)
+DEBUG: Inserting initial repos: [{"discordChannelId":"files-channel-1","repoUrl":"git@github.com:test/files-repo.git
+","contextFiles":["file1.js","src/file2.ts"]},{"discordChannelId":"files-channel-2","repoUrl":"git@github.com:test/f
+iles-repo-empty.git","contextFiles":[]},{"discordChannelId":"add-channel-1","repoUrl":"git@github.com:test/repo-add.
+git","contextFiles":["existing.txt"]},{"discordChannelId":"add-channel-2","repoUrl":"git@github.com:test/repo-add-in
+valid.git","contextFiles":[]},{"discordChannelId":"drop-channel-1","repoUrl":"git@github.com:test/repo-drop.git","co
+ntextFiles":["keep.js","remove.txt","another/to_remove.css"]},{"discordChannelId":"drop-channel-2","repoUrl":"git@gi
+thub.com:test/repo-drop-none.git","contextFiles":["file1.js","file2.js"]}]
+ok 61 Inserted initial repository data
+# Context Commands: /files
+# Interaction replied: {"content":"**Files in context:**\n`file1.js`\n`src/file2.ts`","ephemeral":true}
+ok 62 Reply should be ephemeral
+ok 63 Reply contains header
+ok 64 Reply contains file1.js
+ok 65 Reply contains src/file2.ts
+# Context Commands: /files (no files)
+# Interaction replied: {"content":"No files currently in context.","ephemeral":true}
+ok 66 Reply should be ephemeral
+ok 67 Reply indicates no files
+# Context Commands: /files (no repo)
+# Interaction replied: {"content":"No repository configured for this channel.","ephemeral":true}
+ok 68 Reply should be ephemeral
+ok 69 Reply indicates no repo
+# Context Commands: /add
+# Interaction replied: {"content":"Attempted to add files: `new/file.js`, `another.txt`, `existing.txt`. Use `/files
+` to see the updated list.","ephemeral":true}
+ok 70 Reply should be ephemeral
+ok 71 Reply confirms added files
+ok 72 Repo should exist
+ok 73 Database contains correct files (including existing, ignoring duplicate add)
+# Context Commands: /add (invalid paths)
+# Interaction replied: {"content":"Error: Invalid paths detected: `/etc/passwd`, `../../secrets.txt`. Paths cannot s
+tart with / or contain ..","ephemeral":true}
+ok 74 Reply should be ephemeral
+ok 75 Reply indicates invalid paths
+ok 76 Repo should exist
+ok 77 Database should remain unchanged after invalid add attempt
+# Context Commands: /add (no repo)
+# Interaction replied: {"content":"No repository configured for this channel.","ephemeral":true}
+ok 78 Reply should be ephemeral
+ok 79 Reply indicates no repo
+# Context Commands: /drop
+# Interaction replied: {"content":"Removed files: `remove.txt`, `not_present.py`, `another/to_remove.css`. Use `/fil
+es` to see the updated list.","ephemeral":true}
+ok 80 Reply should be ephemeral
+ok 81 Reply confirms removed files (even if not present)
+ok 82 Repo should exist
+ok 83 Database contains only the remaining file
+# Context Commands: /drop (no files match)
+# Interaction replied: {"content":"None of the specified files (`nonexistent.txt`, `another.css`) were found in the 
+context list.","ephemeral":true}
+ok 84 Reply should be ephemeral
+ok 85 Reply indicates no files were found to remove
+ok 86 Repo should exist
+ok 87 Database should remain unchanged
+# Context Commands: /drop (no repo)
+# Interaction replied: {"content":"No repository configured for this channel.","ephemeral":true}
+ok 88 Reply should be ephemeral
+ok 89 Reply indicates no repo
+# Crypto Module - Encryption/Decryption Round Trip
+ok 90 Encrypt should return a string containing a colon
+ok 91 Decrypted text should match original text
+# Crypto Module - Decrypt Invalid Input
+Decryption failed: Invalid encrypted text format.
+ok 92 Decrypt should return null for invalid input format
+Decryption failed: Invalid IV length.
+ok 93 Decrypt should return null for input causing crypto errors
+Decryption failed: error:1C800064:Provider routines::bad decrypt
+ok 94 Decrypt should return null when using the wrong key
+Decryption failed: Invalid IV length.
+ok 95 Decrypt should return null for invalid IV length
+# Crypto Module - Encrypt/Decrypt with Different Valid Keys
+ok 96 Should decrypt correctly with key 1
+ok 97 Should decrypt correctly with key 2
+Decryption failed: error:1C800064:Provider routines::bad decrypt
+ok 98 Should fail to decrypt with the wrong key
+Decryption failed: error:1C800064:Provider routines::bad decrypt
+ok 99 Should fail to decrypt with the wrong key
+# Mongoose Connection Setup
+ok 100 In-memory server should provide a base URI
+In-memory MongoDB started at mongodb://127.0.0.1:53463/
+# connectDB Function with Mongoose
+Mongoose disconnecting...
+Mongoose disconnected.
+# Disconnected existing mongoose connection before connectDB test
+Attempting to connect Mongoose to mongodb://127.0.0.1:53463/mongoose-test-db ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 101 connectDB should return a DB instance
+ok 102 Mongoose connection name should match testDbName
+ok 103 Returned DB instance name should match testDbName
+Mongoose connection already established or connecting.
+ok 104 Calling connectDB again should return the same instance
+ok 105 Mongoose readyState should be 1 (connected)
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 106 Mongoose readyState should be 0 (disconnected) after closeDB
+# getDB Function with Mongoose
+# Disconnected existing mongoose connection before getDB test
+ok 107 Mongoose readyState should be 0 before connection
+Attempting to connect Mongoose to mongodb://127.0.0.1:53463/mongoose-getdb-test ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 108 Mongoose readyState should be 1 after connection
+ok 109 getDB should return a DB instance after connection
+ok 110 DB instance from getDB should have the correct name
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 111 Mongoose readyState should be 0 after closing
+# Mongoose Connection Teardown
+ok 112 Mongoose readyState should remain 0 after second close
+Attempted closeDB again (should be safe).
+In-memory MongoDB stopped.
+ok 113 Teardown complete
+# Mention Handler Tests
+Mongoose connecting...
+Mongoose connected successfully.
+# Setup Complete
+ok 114 In-memory DB started and seeded
+# Ignores Bot Messages
+Loaded event handler: interactionCreate from interactionCreate.js
+ok 115 invokeAiderWrapper should NOT be called for bot messages
+# No Mention
+Loaded event handler: interactionCreate from interactionCreate.js
+ok 116 invokeAiderWrapper should NOT be called if bot is not mentioned
+# Mention, No Repo Configured
+Loaded event handler: interactionCreate from interactionCreate.js
+Bot mentioned by User#1234 in channel mock-channel-id
+Extracted prompt: "what is this channel?"
+Mongoose connection already established or connecting.
+No repository configured for channel channel-without-repo
+ok 117 reply should be called once for "not configured" message
+ok 118 invokeAiderWrapper should NOT be called when no repo is configured
+# Mention, Repo Found, Wrapper Called Successfully (Text Response)
+Loaded event handler: interactionCreate from interactionCreate.js
+Bot mentioned by User#1234 in channel channel-with-repo
+Extracted prompt: "do the thing"
+Mongoose connection already established or connecting.
+Found repository config for channel channel-with-repo: https://github.com/test/repo.git
+Sending text response to Discord: Mocked AI response
+ok 119 Should send initial "Processing" reply
+ok 120 invokeAiderWrapper should be called once
+ok 121 invokeAiderWrapper called with correct prompt and context files
+ok 122 Should send final response reply
+ok 123 Processing message should be deleted
+# Mention, Repo Found, Wrapper Fails (Execution Error)
+Loaded event handler: interactionCreate from interactionCreate.js
+Bot mentioned by User#1234 in channel channel-with-repo
+Extracted prompt: "trigger failure"
+Mongoose connection already established or connecting.
+Found repository config for channel channel-with-repo: https://github.com/test/repo.git
+Python wrapper execution failed: { error: 'Simulated python execution error', stdout: 'stdout info' }
+ok 124 Should send initial "Processing" reply
+ok 125 invokeAiderWrapper should be called once
+ok 126 invokeAiderWrapper called with correct prompt and context files even on failure
+ok 127 Should reply with generic wrapper error message
+ok 128 Processing message should be deleted
+# Mention, Repo Found, Script Fails (overall_status: failure)
+Loaded event handler: interactionCreate from interactionCreate.js
+Bot mentioned by User#1234 in channel channel-with-repo
+Extracted prompt: "trigger script failure"
+Mongoose connection already established or connecting.
+Found repository config for channel channel-with-repo: https://github.com/test/repo.git
+Python script reported failure: Simulated script error within Python
+ok 129 Should send initial "Processing" reply
+ok 130 invokeAiderWrapper should be called once
+ok 131 invokeAiderWrapper called with correct prompt and context files even on script failure
+ok 132 Should reply with generic script error message
+ok 133 Processing message should be deleted
+# Mention, Repo Found, Success but No Text Response
+Loaded event handler: interactionCreate from interactionCreate.js
+Bot mentioned by User#1234 in channel channel-with-repo
+Extracted prompt: "trigger no text output"
+Mongoose connection already established or connecting.
+Found repository config for channel channel-with-repo: https://github.com/test/repo.git
+Script execution succeeded, but no text_response event found.
+ok 134 Should send initial "Processing" reply
+ok 135 invokeAiderWrapper should be called once
+ok 136 Should reply with "success, no text" message
+ok 137 Processing message should be deleted
+# Mention Only (No Prompt)
+Loaded event handler: interactionCreate from interactionCreate.js
+Bot mentioned by User#1234 in channel channel-with-repo
+Mention received without a prompt.
+ok 138 invokeAiderWrapper should NOT be called for mention only
+ok 139 Should reply with "no prompt" message
+# Ping Command Handler
+Mock Reply: Pong!
+ok 140 Should reply Pong! to /ping command
+ok 141 Should ignore non-ping commands
+# invokeAiderWrapper setup
+# invokeAiderWrapper should call spawn with correct args (no context files)
+Python script exited with code 0
+Stderr: 
+Stdout: {"overall_status":"success","events":[{"type":"text_response","content":"mock"}],"received_context_files":[]
+}
+ok 142 spawn should be called once
+ok 143 spawn called with correct arguments
+ok 144 Should return status success
+# invokeAiderWrapper should call spawn with context file args
+Python script exited with code 0
+Stderr: 
+Stdout: {"overall_status":"success","events":[],"received_context_files":["fileA.js","dir/fileB.txt"]}
+ok 145 spawn should be called once
+ok 146 spawn called with context file arguments
+ok 147 Should return status success
+# invokeAiderWrapper should handle errors for invalid prompts
+ok 148 Should return status failure for invalid prompt
+ok 149 Should return specific error message
+# invokeAiderWrapper should handle python script errors (stderr)
+Python script exited with code 1
+Stderr: Traceback (most recent call last):
+Error!
+
+Stdout: 
+ok 150 spawn should be called
+ok 151 Should return status failure for script error
+ok 152 Should capture stderr as error message
+# invokeAiderWrapper should handle JSON parsing errors
+Python script exited with code 0
+Stderr: 
+Stdout: This is not JSON{
+Failed to parse JSON from Python script: SyntaxError: Unexpected token 'T', "This is not JSON{" is not valid JSON
+ok 153 spawn should be called
+ok 154 Should return status failure for JSON error
+ok 155 Error message should indicate JSON parsing failure
+# ** Setup Mongoose Connection **
+Mongoose connection already established or connecting.
+ok 156 Mongoose connected for Repository tests
+# Repository Model - Save Success
+ok 157 Should save successfully and return an _id
+ok 158 Should have repoUrl
+ok 159 Should have discordChannelId
+ok 160 Should have createdAt timestamp
+ok 161 Should have updatedAt timestamp
+ok 162 contextFiles should be an array
+ok 163 contextFiles should be empty by default
+# Repository Model - Validation Error (Missing repoUrl)
+ok 164 Error should be a Mongoose ValidationError
+ok 165 Error details should mention repoUrl
+ok 166 Error kind should be required
+# Repository Model - Validation Error (Missing discordChannelId)
+ok 167 Error should be a Mongoose ValidationError
+ok 168 Error details should mention discordChannelId
+# Repository Model - Uniqueness Error (discordChannelId)
+ok 169 First repository saved successfully
+ok 170 Error should indicate a duplicate key violation
+# Repository Model - Update contextFiles
+ok 171 Initial document created for update test
+ok 172 Updated document should be returned
+ok 173 contextFiles should still be an array
+ok 174 contextFiles should have the added files
+ok 175 contextFiles content should match
+# ** Teardown Mongoose Connection **
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 176 Mongoose disconnected and server stopped
+
+1..176
+# tests 176
+# pass  176
+
+# ok
+
+
+
+~/play/test/vibehive main* 7s
+
+```
+
+---
+
+Excellent, Big D! All 176 tests passed.
+
+It looks like correcting the key lengths in the test file did the trick. The `lib/crypto.js` module is now implemented according to the tutorial steps, and the tests verify its functionality without relying on environment variables.
+
+---
+
+_**User**_
+
+create tutorial 13a. we will take a short break to inspect the codebase we detail exactly how to make sure that
+1.  ALL test files have t.plan() removed. 
+2. readme is updated to the current state of the codebase
+3. .env.example reflects what is required to run the app in production for the current state of the codebase
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+Okay, Big D. Let's create a tutorial for those codebase inspection and cleanup steps.
+
+I'll create the file `docs/tutorials/13a-codebase-inspection.md` with the steps you outlined.
+
+---
+
+```diff
+- 
++ # Tutorial 13a: Codebase Inspection and Cleanup
++ 
++ This tutorial covers essential steps to ensure the codebase is clean, documented, and easy for others (and your future self) to understand and run.
++ 
++ ## Goal
++ 
++ Perform a quick inspection and cleanup pass over the codebase, focusing on:
++ 1.  Removing `t.plan()` from test files.
++ 2.  Updating the main `README.md`.
++ 3.  Ensuring `.env.example` reflects required production variables.
++ 
++ ## Steps
++ 
++ ### 1. Remove `t.plan()` from Test Files
++ 
++ **Why?** We've decided against using `t.plan()` in our `tape` tests to avoid the brittleness of specifying the exact number of assertions upfront.
++ 
++ **How?**
++ 
++ *   **Identify files:** Find all test files that might contain `t.plan()`.
++     ```bash
++     # Use grep to find files containing t.plan(
++     grep -l 't\.plan(' test/**/*.test.js
++     ```
++ *   **Remove the lines:** Manually edit each file identified by the `grep` command and delete any lines containing `t.plan(...)`.
++     *   *Example:* If `test/some.test.js` contains `t.plan(3)`, delete that entire line.
++ 
++ ### 2. Update `README.md`
++ 
++ **Why?** The `README.md` is the entry point for understanding the project. It should accurately reflect the current features, setup, and usage.
++ 
++ **How?**
++ 
++ *   **Review Current README:** Read the existing `README.md` file.
++ *   **Update Sections:** Ensure the following information is present and up-to-date:
++     *   **Project Purpose:** A brief description of what Vibehive does.
++     *   **Features:** List the main capabilities (e.g., Discord bot, `/add-repo`, `/files`, `/add`, `/drop` commands, AI interaction via mentions, AES encryption via `lib/crypto.js`).
++     *   **Setup:** Instructions on cloning, installing dependencies (`npm install`).
++     *   **Configuration:** Explain the need for a `.env` file and list the required environment variables (see next step).
++     *   **Running the Bot:** How to start the bot (`npm start`, mention deployment if applicable).
++     *   **Running Tests:** How to run the test suite (`npm test`).
++ *   **Add Crypto Info:** Specifically mention the new `lib/crypto.js` module and its reliance on the `ENCRYPTION_KEY` environment variable.
++ 
++ ### 3. Update/Create `.env.example`
++ 
++ **Why?** The `.env.example` file serves as a template, showing users exactly which environment variables are required to run the application in production.
++ 
++ **How?**
++ 
++ *   **Identify Required Variables:** Based on our code (`index.js`, `config.js`, `lib/crypto.js`), the required variables are:
++     *   `DISCORD_BOT_TOKEN`: For the Discord bot to log in.
++     *   `DISCORD_CLIENT_ID`: For registering slash commands.
++     *   `MONGO_URI`: The connection string for the MongoDB database.
++     *   `ENCRYPTION_KEY`: The 32-character key for AES encryption/decryption.
++ *   **Create/Update the File:** Ensure the `.env.example` file exists and contains the following structure, with placeholder values:
++ 
++     ```dotenv
++     # .env.example
++ 
++     # Discord Bot Credentials
++     DISCORD_BOT_TOKEN=YOUR_DISCORD_BOT_TOKEN_HERE
++     DISCORD_CLIENT_ID=YOUR_DISCORD_APP_CLIENT_ID_HERE
++ 
++     # MongoDB Connection
++     # Example: mongodb://user:password@host:port/database
++     MONGO_URI=YOUR_MONGODB_CONNECTION_STRING_HERE
++ 
++     # AES Encryption (MUST be 32 characters long)
++     ENCRYPTION_KEY=YOUR_SECURE_32_CHARACTER_ENCRYPTION_KEY_HERE
++     ```
++ 
++ Completing these steps ensures the project is more maintainable and easier to set up. 
+```
+
+---
+
+Done. The tutorial file `docs/tutorials/13a-codebase-inspection.md` has been created.
+
+I'll list the directory contents to confirm.
+
+---
+
+<details>
+            <summary>Listed directory docs/tutorials • **14** results</summary>
+        
+| Name |
+|-------|
+| 📄 `13a-codebase-inspection.md` |
+| 📄 `13-aes-encryption.md` |
+| 📄 `12-pass-context-to-wrapper.md` |
+| 📄 `11-context-file-commands.md` |
+| 📄 `10-add-context-files.md` |
+| 📄 `09-parse-response.md` |
+| 📄 `08-mention-handler.md` |
+| 📄 `07-node-python-wrapper.md` |
+| 📄 `06-aider-wrapper.md` |
+| 📄 `05-save-repo-data.md` |
+| 📄 `04-add-repo-command.md` |
+| 📄 `03-mongoose-schema.md` |
+| 📄 `02-mongodb-integration.md` |
+| 📄 `01-basic-discord-bot.md` |
+
+</details>
+
+---
+
+Confirmed, Big D. The file `docs/tutorials/13a-codebase-inspection.md` is present in the `docs/tutorials` directory.
 
 ---
 

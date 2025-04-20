@@ -26,7 +26,8 @@ const setup = async () => {
   await Repository.deleteMany({}) // Clear before seeding
   await Repository.create({
     discordChannelId: 'channel-with-repo',
-    repoUrl: 'https://github.com/test/repo.git'
+    repoUrl: 'https://github.com/test/repo.git',
+    contextFiles: ['README.md', 'lib/main.js'] // Seed context files
   })
 }
 
@@ -141,7 +142,7 @@ test('Mention Handler Tests', async (t) => {
   })
 
   t.test('Mention, Repo Found, Wrapper Called Successfully (Text Response)', async (st) => {
-    st.plan(4)
+    st.plan(5) // Increased plan for context file check
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockSuccessResult = {
@@ -172,14 +173,16 @@ test('Mention Handler Tests', async (t) => {
 
     // Assert
     st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
-    st.ok(mockInvokeAiderWrapper.calledOnceWith({ prompt: 'do the thing' }), 'invokeAiderWrapper called with correct prompt')
+    st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
+    const expectedArgs = { prompt: 'do the thing', contextFiles: ['README.md', 'lib/main.js'] } // Expect context files
+    st.deepEqual(mockInvokeAiderWrapper.firstCall.args[0], expectedArgs, 'invokeAiderWrapper called with correct prompt and context files') // Check args object
     st.ok(replyStub.calledWithMatch(/\*\*Response for @TestUser:\*\*/), 'Should send final response reply')
     st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
     sandbox.restore()
   })
 
   t.test('Mention, Repo Found, Wrapper Fails (Execution Error)', async (st) => {
-    st.plan(4)
+    st.plan(5) // Increased plan for context file check
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockFailureResult = { status: 'failure', error: 'Simulated python execution error', stdout: 'stdout info' }
@@ -205,13 +208,15 @@ test('Mention Handler Tests', async (t) => {
     // Assert
     st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
     st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
+    const expectedArgs = { prompt: 'trigger failure', contextFiles: ['README.md', 'lib/main.js'] } // Expect context files
+    st.deepEqual(mockInvokeAiderWrapper.firstCall.args[0], expectedArgs, 'invokeAiderWrapper called with correct prompt and context files even on failure') // Check args object
     st.ok(replyStub.calledWithMatch(/❌ An error occurred while processing your request\. Details logged\./), 'Should reply with generic wrapper error message')
     st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
     sandbox.restore()
   })
 
   t.test('Mention, Repo Found, Script Fails (overall_status: failure)', async (st) => {
-    st.plan(4)
+    st.plan(5) // Increased plan for context file check
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockScriptFailureResult = {
@@ -244,6 +249,8 @@ test('Mention Handler Tests', async (t) => {
     // Assert
     st.ok(replyStub.calledWith('Processing your request...'), 'Should send initial "Processing" reply')
     st.ok(mockInvokeAiderWrapper.calledOnce, 'invokeAiderWrapper should be called once')
+    const expectedArgs = { prompt: 'trigger script failure', contextFiles: ['README.md', 'lib/main.js'] } // Expect context files
+    st.deepEqual(mockInvokeAiderWrapper.firstCall.args[0], expectedArgs, 'invokeAiderWrapper called with correct prompt and context files even on script failure') // Check args object
     st.ok(replyStub.calledWithMatch(/❌ An error occurred within the script execution\. Details logged\./), 'Should reply with generic script error message')
     st.ok(deleteStub.calledOnce, 'Processing message should be deleted')
     sandbox.restore()

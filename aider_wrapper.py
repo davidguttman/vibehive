@@ -8,6 +8,12 @@ import sys
 def main():
     parser = argparse.ArgumentParser(description="Placeholder for aider interaction.")
     parser.add_argument("--prompt", required=True, help="The prompt to send to the placeholder.")
+    parser.add_argument(
+        "--context-file",
+        action="append",  # Allows the argument to appear multiple times
+        help="Path to a context file to include",
+        default=[]  # Initialize with an empty list if none are provided
+    )
 
     try:
         args = parser.parse_args()
@@ -25,7 +31,8 @@ def main():
                     "type": "text_response",
                     "content": f"Placeholder response for prompt: {prompt_value}"
                 }
-            ]
+            ],
+            "received_context_files": args.context_file
         }
 
         # Print the JSON response to stdout

@@ -38,6 +38,37 @@ test('Aider Wrapper Script - Success Case', (t) => {
   })
 })
 
+test('Aider Wrapper Script - Success Case with Context Files', (t) => {
+  const promptText = 'process these files'
+  const contextFiles = ['file1.txt', 'path/to/file2.js']
+  const args = ['--prompt', promptText]
+  contextFiles.forEach(file => {
+    args.push('--context-file', file)
+  })
+
+  runScript(args, (error, stdout, stderr) => {
+    t.error(error, 'Script should exit without error (error code 0)')
+    t.equal(stderr, '', 'Stderr should be empty on success')
+
+    try {
+      const output = JSON.parse(stdout)
+      t.ok(output, 'Stdout should be valid JSON')
+      t.equal(output.overall_status, 'success', 'Status should be success')
+      t.equal(output.error, null, 'Error field should be null')
+      t.ok(Array.isArray(output.events), 'Events should be an array')
+      t.ok(output.events.length > 0, 'Events array should have at least one element') // Basic check
+      t.equal(output.events[0].type, 'text_response', 'First event type should be text_response')
+      t.ok(output.events[0].content.includes(promptText), 'Event content should contain the prompt')
+      t.ok(output.received_context_files, 'Output should contain received_context_files field')
+      t.deepEqual(output.received_context_files, contextFiles, 'received_context_files should match input context files')
+    } catch (parseError) {
+      t.fail(`Failed to parse JSON output: ${parseError}\nOutput: ${stdout}`)
+    }
+
+    t.end()
+  })
+})
+
 test('Aider Wrapper Script - Error Case (Missing Prompt)', (t) => {
   runScript([], (error, stdout, stderr) => {
     t.ok(error, 'Script should exit with an error (non-zero code)')

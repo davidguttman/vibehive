@@ -135,11 +135,14 @@ async function handleMessageCreate (client, message) {
 
       console.log(`Found repository config for channel ${channelId}: ${repoConfig.repoUrl}`)
 
+      // Get context files from the repo doc
+      const contextFiles = repoConfig.contextFiles || [] // Added
+
       // Add some user feedback that the request is being processed
       processingMessage = await message.reply('Processing your request...').catch(console.error)
 
       // 6. Invoke the Python wrapper
-      const result = await invokeAiderWrapper({ prompt }) // Pass prompt in options object
+      const result = await invokeAiderWrapper({ prompt, contextFiles }) // Pass contextFiles
 
       // 7. Process the result (Revised logic)
       if (result.status === 'failure') {

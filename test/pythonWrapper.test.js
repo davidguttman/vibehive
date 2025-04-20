@@ -23,7 +23,6 @@ test('invokeAiderWrapper setup', t => {
 })
 
 test('invokeAiderWrapper should call spawn with correct args (no context files)', async (t) => {
-  t.plan(3)
   spawnStub.reset()
   // Mock the spawned process behavior (needs to emit 'close')
   const mockProcess = new (require('events').EventEmitter)()
@@ -54,7 +53,6 @@ test('invokeAiderWrapper should call spawn with correct args (no context files)'
 })
 
 test('invokeAiderWrapper should call spawn with context file args', async (t) => {
-  t.plan(3)
   spawnStub.reset()
   const mockProcess = new (require('events').EventEmitter)()
   mockProcess.stdout = new (require('events').EventEmitter)()
@@ -84,7 +82,6 @@ test('invokeAiderWrapper should call spawn with context file args', async (t) =>
 })
 
 test('invokeAiderWrapper should handle errors for invalid prompts', async (t) => {
-  t.plan(2)
   spawnStub.reset()
   // No need to simulate process for invalid input handled before spawn
   const result = await invokeAiderWrapper({ prompt: ' ' }) // Empty prompt
@@ -93,7 +90,6 @@ test('invokeAiderWrapper should handle errors for invalid prompts', async (t) =>
 })
 
 test('invokeAiderWrapper should handle python script errors (stderr)', async (t) => {
-  t.plan(3)
   spawnStub.reset()
   const mockProcess = new (require('events').EventEmitter)()
   mockProcess.stdout = new (require('events').EventEmitter)()
@@ -116,7 +112,6 @@ test('invokeAiderWrapper should handle python script errors (stderr)', async (t)
 })
 
 test('invokeAiderWrapper should handle JSON parsing errors', async (t) => {
-  t.plan(3)
   spawnStub.reset()
   const mockProcess = new (require('events').EventEmitter)()
   mockProcess.stdout = new (require('events').EventEmitter)()

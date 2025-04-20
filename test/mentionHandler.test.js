@@ -60,7 +60,6 @@ test('Mention Handler Tests', async (t) => {
   })
 
   t.test('Ignores Bot Messages', async (st) => {
-    st.plan(1)
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockInvokeAiderWrapper = sandbox.stub().resolves({ status: 'success', data: {} }) // Mock stub
@@ -88,7 +87,6 @@ test('Mention Handler Tests', async (t) => {
   })
 
   t.test('No Mention', async (st) => {
-    st.plan(1)
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockInvokeAiderWrapper = sandbox.stub().resolves({ status: 'success', data: {} })
@@ -114,7 +112,6 @@ test('Mention Handler Tests', async (t) => {
   })
 
   t.test('Mention, No Repo Configured', async (st) => {
-    st.plan(2)
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockInvokeAiderWrapper = sandbox.stub().resolves({ status: 'success', data: {} })
@@ -142,7 +139,6 @@ test('Mention Handler Tests', async (t) => {
   })
 
   t.test('Mention, Repo Found, Wrapper Called Successfully (Text Response)', async (st) => {
-    st.plan(5) // Increased plan for context file check
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockSuccessResult = {
@@ -182,7 +178,6 @@ test('Mention Handler Tests', async (t) => {
   })
 
   t.test('Mention, Repo Found, Wrapper Fails (Execution Error)', async (st) => {
-    st.plan(5) // Increased plan for context file check
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockFailureResult = { status: 'failure', error: 'Simulated python execution error', stdout: 'stdout info' }
@@ -216,7 +211,6 @@ test('Mention Handler Tests', async (t) => {
   })
 
   t.test('Mention, Repo Found, Script Fails (overall_status: failure)', async (st) => {
-    st.plan(5) // Increased plan for context file check
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockScriptFailureResult = {
@@ -257,7 +251,6 @@ test('Mention Handler Tests', async (t) => {
   })
 
   t.test('Mention, Repo Found, Success but No Text Response', async (st) => {
-    st.plan(4)
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockNoTextResult = {
@@ -295,7 +288,6 @@ test('Mention Handler Tests', async (t) => {
   })
 
   t.test('Mention Only (No Prompt)', async (st) => {
-    st.plan(2)
     const sandbox = sinon.createSandbox()
     // Arrange
     const mockInvokeAiderWrapper = sandbox.stub().resolves({ status: 'success', data: {} })

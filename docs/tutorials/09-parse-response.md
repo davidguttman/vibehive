@@ -1,0 +1,26 @@
+# Tutorial 9: Parse Python Wrapper Response
+
+Task: Parse the output from the Python wrapper and display the response in Discord.
+Requirements:
+1.  Modify the `messageCreate` handler (from Prompt 8).
+2.  After receiving the result from `invokeAiderWrapper`:
+    -   Check the `status` field of the result.
+    -   If `status` is 'failure', reply to the original message with a generic error (e.g., "❌ An error occurred while processing your request. Details logged."). Log the detailed error (`result.error`, `result.stdout`) internally.
+    -   If `status` is 'success':
+        -   Access the parsed JSON data (`result.data`).
+        -   Check `result.data.overall_status`. If it's 'failure', report an error similar to the above, logging `result.data.error`.
+        -   If `result.data.overall_status` is 'success':
+            -   Find the first event with `type: "text_response"` in the `result.data.events` array.
+            -   If found, reply to the original message with the `content` of that event.
+            -   If no `text_response` event is found, reply with a message indicating success but no text output.
+3.  Handle potential network errors when replying to Discord.
+4.  Use standard.js style. Run `standard --fix`.
+Testing:
+-   Modify `test/mentionHandler.test.js`.
+-   Mock `invokeAiderWrapper` to return different results:
+    -   Success case: Return the standard placeholder JSON. Assert that `message.reply` is called with the correct placeholder text.
+    -   Wrapper failure case: Return `{ status: 'failure', error: 'stderr output' }`. Assert `message.reply` is called with a generic error message.
+    -   Script failure case: Return `{ status: 'success', data: { overall_status: 'failure', error: 'script error', events: [] } }`. Assert `message.reply` is called with a generic error message.
+    -   No text response case: Return `{ status: 'success', data: { overall_status: 'success', events: [] } }`. Assert `message.reply` is called with an appropriate message.
+-   Mock `message.reply` to verify its arguments and prevent actual Discord calls.
+-   Ensure tests run via `npm test`. 

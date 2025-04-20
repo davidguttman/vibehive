@@ -1,7 +1,12 @@
 // test/add-repo-command.test.js
 const test = require('tape')
-const sinon = require('sinon') // Using sinon for easier mocking
+const sinon = require('sinon')
 const { PermissionsBitField } = require('discord.js')
+const { MongoMemoryServer } = require('mongodb-memory-server')
+process.env.NODE_ENV = 'test'
+// const mongoose = require('mongoose') // Removed - Unused in this file
+const Repository = require('../models/Repository')
+const { connectDB, closeDB } = require('../lib/mongo')
 
 // We need to simulate the part of index.js that handles interactions
 // Normally, you might extract the handler logic into its own module,
@@ -57,7 +62,7 @@ function createMockInteraction (options = {}) {
   }
 }
 
-// Simplified interaction handler logic (mirroring index.js)
+// Simplified interaction handler logic (mirroring index.js - with DB calls)
 async function handleInteraction (interaction) {
   if (!interaction.isChatInputCommand()) return
   if (!interaction.inGuild()) {
@@ -81,8 +86,30 @@ async function handleInteraction (interaction) {
       }
 
       await interaction.deferReply({ ephemeral: true })
-      // Placeholder logic would go here
-      await interaction.followUp({ content: `Received request to add repository: ${repoUrl}`, ephemeral: true })
+
+      // --- Database Logic (Copied from index.js for test simulation) ---
+      const channelId = interaction.channelId
+      let replyMessage = ''
+
+      try {
+        const updatedRepo = await Repository.findOneAndUpdate(
+          { discordChannelId: channelId },
+          { repoUrl },
+          { new: true, upsert: true, runValidators: true }
+        )
+        console.log(`TEST: Repository config updated/created for channel ${channelId}: ${updatedRepo.repoUrl}`)
+        replyMessage = `Repository configuration saved for this channel: <${repoUrl}>`
+      } catch (dbError) {
+        console.error('TEST: Database error saving repository:', dbError)
+        if (dbError.name === 'ValidationError') {
+          replyMessage = `Error saving repository: Invalid data provided. ${Object.values(dbError.errors).map(e => e.message).join(' ')}`
+        } else {
+          replyMessage = 'Error saving repository configuration to the database.'
+        }
+      }
+
+      // Follow up after deferral
+      await interaction.followUp({ content: replyMessage, ephemeral: true })
     } catch (error) {
       console.error('Mock handler error:', error)
       // Simplified error reply for testing
@@ -97,6 +124,21 @@ async function handleInteraction (interaction) {
     await interaction.reply('Pong!')
   }
 }
+
+// --- Test Setup and Teardown ---
+let mongoServer
+let mongoUri
+
+test('** Setup Add-Repo Tests **', async (t) => {
+  mongoServer = await MongoMemoryServer.create()
+  mongoUri = mongoServer.getUri()
+  await connectDB(mongoUri)
+  t.pass('Mongoose connected for Add-Repo command tests')
+  // Clean repo collection before tests
+  await Repository.deleteMany({})
+  t.pass('Repository collection cleaned')
+  t.end()
+})
 
 // --- Tests ---
 
@@ -125,10 +167,17 @@ test('/add-repo Command - Admin Success', async (t) => {
 
   t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp should be called once after deferral')
   const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
-  t.equal(followUpArgs.content, `Received request to add repository: ${testUrl}`, 'Should followUp with acknowledgement and URL')
+  t.equal(followUpArgs.content, `Repository configuration saved for this channel: <${testUrl}>`, 'Should followUp with success message and URL')
   t.equal(followUpArgs.ephemeral, true, 'Acknowledgement followUp should be ephemeral')
   t.notOk(mockInteraction.stubs.reply.called, 'reply should not be called directly on success')
 
+  // Assert database state
+  const savedDoc = await Repository.findOne({ discordChannelId: mockInteraction.channelId })
+  t.ok(savedDoc, 'Document should exist in DB')
+  t.equal(savedDoc.repoUrl, testUrl, 'Saved document should have the correct repoUrl')
+
+  // Clean up this specific document
+  await Repository.deleteOne({ _id: savedDoc._id })
   t.end()
 })
 
@@ -172,5 +221,33 @@ test('Interaction Handler - Ignores Other Commands', async (t) => {
   t.notOk(mockInteraction.stubs.deferReply.called, 'deferReply should not be called for ping')
   t.notOk(mockInteraction.stubs.followUp.called, 'followUp should not be called for ping')
 
+  t.end()
+})
+
+// --- Database Error Test ---
+test('/add-repo Command - Database Save Error', async (t) => {
+  const testUrl = 'https://db-error-repo.com/test.git'
+  const mockInteraction = createMockInteraction({ isAdmin: true, repoUrl: testUrl })
+
+  // Stub the findOneAndUpdate method to throw an error
+  const findOneAndUpdateStub = sinon.stub(Repository, 'findOneAndUpdate').throws(new Error('Simulated DB Error'))
+
+  await handleInteraction(mockInteraction)
+
+  t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply should be called')
+  t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp should be called')
+  const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
+  t.equal(followUpArgs.content, 'Error saving repository configuration to the database.', 'Should reply with DB error message')
+
+  // Restore the original method
+  findOneAndUpdateStub.restore()
+  t.end()
+})
+
+// --- Test Teardown ---
+test('** Teardown Add-Repo Tests **', async (t) => {
+  await closeDB()
+  await mongoServer.stop()
+  t.pass('Mongoose disconnected and server stopped for Add-Repo tests')
   t.end()
 })

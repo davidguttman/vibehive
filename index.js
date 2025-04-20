@@ -11,6 +11,7 @@ const {
 // 2. Local Requires
 const config = require('./config') // Use the config module // Added
 const { connectDB } = require('./lib/mongo') // Import connectDB // Added
+const Repository = require('./models/Repository') // Import the Repository model // Added
 
 // 3. Constants
 // const BOT_TOKEN = process.env.DISCORD_TOKEN // Removed
@@ -102,41 +103,62 @@ client.on(Events.InteractionCreate, async interaction => {
         await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true })
       }
     }
-  } else if (commandName === 'add-repo') { // Added
-    try { // Added
-      // 1. Check Permissions // Added
-      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) { // Added
-        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true }) // Added
-        console.log(`User ${interaction.user.tag} attempted to use /add-repo without permissions.`) // Added
-        return // Added
+  } else if (commandName === 'add-repo') {
+    try {
+      // 1. Check Permissions
+      if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true })
+        console.log(`User ${interaction.user.tag} attempted to use /add-repo without permissions.`)
+        return
+      }
+
+      // 2. Get the URL option
+      const repoUrl = interaction.options.getString('url')
+      if (!repoUrl) {
+        await interaction.reply({ content: 'Error: The repository URL is missing.', ephemeral: true })
+        return
+      }
+
+      // 3. Reply with acknowledgement (temporary)
+      await interaction.deferReply({ ephemeral: true })
+
+      // --- Database Logic --- // Added block
+      const channelId = interaction.channelId // Added
+      let replyMessage = '' // Added
+
+      try { // Added
+        // Upsert: Find a doc with the channelId, or create it if it doesn't exist. // Added
+        // Update the repoUrl in either case. // Added
+        const updatedRepo = await Repository.findOneAndUpdate( // Added
+          { discordChannelId: channelId }, // Filter: find by channel ID // Added
+          { repoUrl }, // Update: set the repo URL // Added
+          { new: true, upsert: true, runValidators: true } // Options: return updated doc, create if not found, run schema validators // Added
+        ) // Added
+
+        console.log(`Repository config updated/created for channel ${channelId}: ${updatedRepo.repoUrl}`) // Added
+        replyMessage = `Repository configuration saved for this channel: <${repoUrl}>` // Use <> for no embed // Added
+      } catch (dbError) { // Added
+        console.error('Database error saving repository:', dbError) // Added
+        // Check if it's a validation error (e.g., invalid URL format if added later) // Added
+        if (dbError.name === 'ValidationError') { // Added
+          replyMessage = `Error saving repository: Invalid data provided. ${Object.values(dbError.errors).map(e => e.message).join(' ')}` // Added
+        } else { // Added
+          replyMessage = 'Error saving repository configuration to the database.' // Added
+        } // Added
       } // Added
+      // --- End Database Logic --- // Added
 
-      // 2. Get the URL option // Added
-      const repoUrl = interaction.options.getString('url') // 'url' matches the option name // Added
-      if (!repoUrl) { // Should not happen if option is required, but good practice to check // Added
-        await interaction.reply({ content: 'Error: The repository URL is missing.', ephemeral: true }) // Added
-        return // Added
-      } // Added
-
-      // 3. Reply with acknowledgement (temporary) // Added
-      // It's often good to defer the reply if the next steps take time // Added
-      await interaction.deferReply({ ephemeral: true }) // Acknowledge privately for now // Added
-
-      // --- Placeholder for future logic (saving to DB) --- // Added
-      console.log(`Admin ${interaction.user.tag} requested to add repo: ${repoUrl} in channel ${interaction.channelId}`) // Added
-      // --- End Placeholder --- // Added
-
-      // Follow up after deferral // Added
-      await interaction.followUp({ content: `Received request to add repository: ${repoUrl}`, ephemeral: true }) // Added
-    } catch (error) { // Added
-      console.error('Error handling /add-repo command:', error) // Added
-      if (interaction.replied || interaction.deferred) { // Added
-        await interaction.followUp({ content: 'There was an error processing your request.', ephemeral: true }) // Added
-      } else { // Added
-        await interaction.reply({ content: 'There was an error processing your request.', ephemeral: true }) // Added
-      } // Added
-    } // Added
-  } // Added
+      // Follow up after deferral
+      await interaction.followUp({ content: replyMessage, ephemeral: true }) // Modified
+    } catch (error) {
+      console.error('Error handling /add-repo command:', error)
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content: 'There was an error processing your request.', ephemeral: true })
+      } else {
+        await interaction.reply({ content: 'There was an error processing your request.', ephemeral: true })
+      }
+    }
+  }
   // Add handlers for other commands here
 })
 

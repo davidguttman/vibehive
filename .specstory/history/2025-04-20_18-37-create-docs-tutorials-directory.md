@@ -4980,7 +4980,469 @@ npm WARN config init.license Use `--init-license` instead.
 
 ---
 
+Linter finished.
 
+Step 4: Create the test file `test/add-repo-command.test.js`. First, install `sinon` as required by the test.
+
+---
+
+```bash
+npm install --save-dev sinon
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+npm http fetch GET 200 https://registry.npmjs.org/sinon 244ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@sinonjs%2ffake-timers 85ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/diff 145ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@sinonjs%2fcommons 169ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/@sinonjs%2fsamsam 169ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/type-detect 57ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/lodash.get 59ms (cache updated)
+npm http fetch GET 200 https://registry.npmjs.org/type-detect 61ms (cache updated)
+npm WARN deprecated lodash.get@4.4.2: This package is deprecated. Use the optional chaining (?.) operator instead.
+npm http fetch POST 200 https://registry.npmjs.org/-/npm/v1/security/advisories/bulk 130ms
+
+added 8 packages, and audited 400 packages in 854ms
+
+153 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+
+
+~/play/test/vibehive main* ⇡
+
+```
+
+---
+
+Now, create the test file.
+
+---
+
+```diff
+- 
++ // test/add-repo-command.test.js
++ const test = require('tape')
++ const sinon = require('sinon') // Using sinon for easier mocking
++ const { PermissionsBitField } = require('discord.js')
++ 
++ // We need to simulate the part of index.js that handles interactions
++ // Normally, you might extract the handler logic into its own module,
++ // but for this tutorial, we'll define a simplified mock handler.
++ 
++ // Mock Interaction Object Factory
++ function createMockInteraction (options = {}) {
++   const {
++     commandName = 'add-repo',
++     isChatInputCommand = true,
++     inGuild = true,
++     userTag = 'testuser#1234',
++     channelId = 'channel-test-id',
++     isAdmin = false,
++     repoUrl = 'https://github.com/test/repo.git',
++     replied = false,
++     deferred = false
++   } = options
++ 
++   // Use Sinon stubs for reply/followUp to track calls
++   const replyStub = sinon.stub().resolves()
++   const followUpStub = sinon.stub().resolves()
++   const deferReplyStub = sinon.stub().resolves()
++ 
++   return {
++     commandName,
++     isChatInputCommand: () => isChatInputCommand,
++     inGuild: () => inGuild,
++     user: { tag: userTag },
++     channelId,
++     member: {
++       // Simulate the permissions check
++       permissions: {
++         has: (permission) => {
++           return permission === PermissionsBitField.Flags.Administrator && isAdmin
++         }
++       }
++     },
++     options: {
++       // Simulate getting the option value
++       getString: (name) => {
++         return name === 'url' ? repoUrl : null
++       }
++     },
++     reply: replyStub,
++     followUp: followUpStub,
++     deferReply: deferReplyStub,
++     // Expose stubs for assertions
++     stubs: { reply: replyStub, followUp: followUpStub, deferReply: deferReplyStub },
++     // Simulate state for error handling checks
++     replied,
++     deferred
++   }
++ }
++ 
++ // Simplified interaction handler logic (mirroring index.js)
++ async function handleInteraction (interaction) {
++   if (!interaction.isChatInputCommand()) return
++   if (!interaction.inGuild()) {
++     await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true })
++     return
++   }
++ 
++   const { commandName } = interaction
++ 
++   if (commandName === 'add-repo') {
++     try {
++       if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
++         await interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true })
++         return // Exit early
++       }
++ 
++       const repoUrl = interaction.options.getString('url')
++       if (!repoUrl) {
++         await interaction.reply({ content: 'Error: The repository URL is missing.', ephemeral: true })
++         return // Exit early
++       }
++ 
++       await interaction.deferReply({ ephemeral: true })
++       // Placeholder logic would go here
++       await interaction.followUp({ content: `Received request to add repository: ${repoUrl}`, ephemeral: true })
++     } catch (error) {
++       console.error('Mock handler error:', error)
++       // Simplified error reply for testing
++       if (interaction.replied || interaction.deferred) {
++         await interaction.followUp({ content: 'There was an error processing your request.', ephemeral: true })
++       } else {
++         await interaction.reply({ content: 'There was an error processing your request.', ephemeral: true })
++       }
++     }
++   } else if (commandName === 'ping') {
++     // Add a basic ping handler if needed for completeness, or ignore
++     await interaction.reply('Pong!')
++   }
++ }
++ 
++ // --- Tests ---
++ 
++ test('/add-repo Command - Non-Admin', async (t) => {
++   const mockInteraction = createMockInteraction({ isAdmin: false })
++   await handleInteraction(mockInteraction)
++ 
++   t.ok(mockInteraction.stubs.reply.calledOnce, 'reply should be called once')
++   const replyArgs = mockInteraction.stubs.reply.firstCall.args[0]
++   t.equal(replyArgs.content, 'You do not have permission to use this command.', 'Should reply with permission error')
++   t.equal(replyArgs.ephemeral, true, 'Permission error reply should be ephemeral')
++   t.notOk(mockInteraction.stubs.deferReply.called, 'deferReply should not be called')
++   t.notOk(mockInteraction.stubs.followUp.called, 'followUp should not be called')
++ 
++   t.end()
++ })
++ 
++ test('/add-repo Command - Admin Success', async (t) => {
++   const testUrl = 'https://valid-repo.com/test.git'
++   const mockInteraction = createMockInteraction({ isAdmin: true, repoUrl: testUrl })
++   await handleInteraction(mockInteraction)
++ 
++   t.ok(mockInteraction.stubs.deferReply.calledOnce, 'deferReply should be called once for admin')
++   const deferArgs = mockInteraction.stubs.deferReply.firstCall.args[0]
++   t.equal(deferArgs.ephemeral, true, 'Defer reply should be ephemeral')
++ 
++   t.ok(mockInteraction.stubs.followUp.calledOnce, 'followUp should be called once after deferral')
++   const followUpArgs = mockInteraction.stubs.followUp.firstCall.args[0]
++   t.equal(followUpArgs.content, `Received request to add repository: ${testUrl}`, 'Should followUp with acknowledgement and URL')
++   t.equal(followUpArgs.ephemeral, true, 'Acknowledgement followUp should be ephemeral')
++   t.notOk(mockInteraction.stubs.reply.called, 'reply should not be called directly on success')
++ 
++   t.end()
++ })
++ 
++ test('/add-repo Command - Missing URL (Should not happen if required)', async (t) => {
++   // Although the option is required, test the internal check just in case
++   const mockInteraction = createMockInteraction({ isAdmin: true, repoUrl: null }) // Simulate missing URL
++   await handleInteraction(mockInteraction)
++ 
++   t.ok(mockInteraction.stubs.reply.calledOnce, 'reply should be called once for missing URL')
++   const replyArgs = mockInteraction.stubs.reply.firstCall.args[0]
++   t.equal(replyArgs.content, 'Error: The repository URL is missing.', 'Should reply with missing URL error')
++   t.equal(replyArgs.ephemeral, true, 'Missing URL error reply should be ephemeral')
++   t.notOk(mockInteraction.stubs.deferReply.called, 'deferReply should not be called')
++   t.notOk(mockInteraction.stubs.followUp.called, 'followUp should not be called')
++ 
++   t.end()
++ })
++ 
++ test('Interaction Handler - Not in Guild', async (t) => {
++   const mockInteraction = createMockInteraction({ inGuild: false })
++   await handleInteraction(mockInteraction)
++ 
++   t.ok(mockInteraction.stubs.reply.calledOnce, 'reply should be called once')
++   const replyArgs = mockInteraction.stubs.reply.firstCall.args[0]
++   t.equal(replyArgs.content, 'This command can only be used in a server.', 'Should reply with guild-only error')
++   t.equal(replyArgs.ephemeral, true, 'Guild-only error reply should be ephemeral')
++   t.notOk(mockInteraction.stubs.deferReply.called, 'deferReply should not be called')
++   t.notOk(mockInteraction.stubs.followUp.called, 'followUp should not be called')
++ 
++   t.end()
++ })
++ 
++ // Optional: Add a test for a different command to ensure it's ignored by add-repo logic
++ test('Interaction Handler - Ignores Other Commands', async (t) => {
++   const mockInteraction = createMockInteraction({ commandName: 'ping', isAdmin: true })
++   await handleInteraction(mockInteraction)
++ 
++   // Check if ping's reply was called, and add-repo's were not
++   t.ok(mockInteraction.stubs.reply.calledOnce, 'ping reply should be called')
++   t.equal(mockInteraction.stubs.reply.firstCall.args[0], 'Pong!', 'Should reply Pong! for ping command')
++   t.notOk(mockInteraction.stubs.deferReply.called, 'deferReply should not be called for ping')
++   t.notOk(mockInteraction.stubs.followUp.called, 'followUp should not be called for ping')
++ 
++   t.end()
++ }) 
+```
+
+---
+
+Test file `test/add-repo-command.test.js` created.
+
+Step 5: Run all tests.
+
+---
+
+```bash
+npm test
+```
+
+```
+npm WARN config init.license Use `--init-license` instead.
+
+> vibehive@1.0.0 test
+> tape test/**/*.test.js
+
+TAP version 13
+# /add-repo Command - Non-Admin
+ok 1 reply should be called once
+ok 2 Should reply with permission error
+ok 3 Permission error reply should be ephemeral
+ok 4 deferReply should not be called
+ok 5 followUp should not be called
+# /add-repo Command - Admin Success
+ok 6 deferReply should be called once for admin
+ok 7 Defer reply should be ephemeral
+ok 8 followUp should be called once after deferral
+ok 9 Should followUp with acknowledgement and URL
+ok 10 Acknowledgement followUp should be ephemeral
+ok 11 reply should not be called directly on success
+# /add-repo Command - Missing URL (Should not happen if required)
+ok 12 reply should be called once for missing URL
+ok 13 Should reply with missing URL error
+ok 14 Missing URL error reply should be ephemeral
+ok 15 deferReply should not be called
+ok 16 followUp should not be called
+# Interaction Handler - Not in Guild
+ok 17 reply should be called once
+ok 18 Should reply with guild-only error
+ok 19 Guild-only error reply should be ephemeral
+ok 20 deferReply should not be called
+ok 21 followUp should not be called
+# Interaction Handler - Ignores Other Commands
+ok 22 ping reply should be called
+ok 23 Should reply Pong! for ping command
+ok 24 deferReply should not be called for ping
+ok 25 followUp should not be called for ping
+# Mongoose Connection Setup
+ok 26 In-memory server should provide a base URI
+In-memory MongoDB started at mongodb://127.0.0.1:64996/
+# connectDB Function with Mongoose
+Attempting to connect Mongoose to mongodb://127.0.0.1:64996/mongoose-test-db ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 27 connectDB should return a DB instance
+ok 28 Mongoose connection name should match testDbName
+ok 29 Returned DB instance name should match testDbName
+Mongoose connection already established or connecting.
+ok 30 Calling connectDB again should return the same instance
+ok 31 Mongoose readyState should be 1 (connected)
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 32 Mongoose readyState should be 0 (disconnected) after closeDB
+# getDB Function with Mongoose
+ok 33 Mongoose readyState should be 0 before connection
+Attempting to connect Mongoose to mongodb://127.0.0.1:64996/mongoose-getdb-test ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 34 Mongoose readyState should be 1 after connection
+ok 35 getDB should return a DB instance after connection
+ok 36 DB instance from getDB should have the correct name
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 37 Mongoose readyState should be 0 after closing
+# Mongoose Connection Teardown
+ok 38 Mongoose readyState should remain 0 after second close
+Attempted closeDB again (should be safe).
+In-memory MongoDB stopped.
+ok 39 Teardown complete
+# Ping Command Handler
+Mock Reply: Pong!
+ok 40 Should reply Pong! to /ping command
+ok 41 Should ignore non-ping commands
+# ** Setup Mongoose Connection **
+Attempting to connect Mongoose to mongodb://127.0.0.1:65001/ ...
+Mongoose connecting...
+Mongoose connected successfully.
+ok 42 Mongoose connected for Repository tests
+# Repository Model - Save Success
+ok 43 Should save successfully and return an _id
+ok 44 Saved repoUrl should match
+ok 45 Saved discordChannelId should match
+ok 46 Should have createdAt timestamp
+ok 47 Should have updatedAt timestamp
+# Repository Model - Validation Error (Missing repoUrl)
+ok 48 Error should be a Mongoose ValidationError
+ok 49 Error details should mention repoUrl
+ok 50 Error kind should be required
+# Repository Model - Validation Error (Missing discordChannelId)
+ok 51 Error should be a Mongoose ValidationError
+ok 52 Error details should mention discordChannelId
+# Repository Model - Uniqueness Error (discordChannelId)
+ok 53 First repository saved successfully
+ok 54 Error should indicate a duplicate key violation
+# ** Teardown Mongoose Connection **
+Mongoose disconnecting...
+Mongoose disconnected.
+ok 55 Mongoose disconnected and server stopped
+
+1..55
+# tests 55
+# pass  55
+
+# ok
+
+
+
+~/play/test/vibehive main* ⇡
+
+```
+
+---
+
+Excellent, all 55 tests passed, Big D!
+
+We have successfully implemented the `/add-repo` command stub according to the tutorial:
+*   Updated `index.js` to register the new command using `SlashCommandBuilder`.
+*   Updated the interaction handler in `index.js` to check for the `add-repo` command, verify administrator permissions, extract the URL option, and send an acknowledgement reply using `deferReply` and `followUp`.
+*   Installed `sinon`.
+*   Created `test/add-repo-command.test.js` to verify the new command stub's logic, including permission checks and replies.
+*   Verified that all tests pass.
+
+The bot is now ready for the next step of actually saving the repository information to the database.
+
+---
+
+_**User**_
+
+Create a new markdown file in the tutorials directory. It should be in the same style as previous tutorials. USE ls/tree to see the files in the codebase, and then write a detailed step-by-step tutorial that shows how to @05.md 
+
+Finally, use ls and check if file has been created
+
+---
+
+_**Assistant**_
+
+
+
+---
+
+Okay Big D, let's create the tutorial for saving repository data.
+
+First, I'll check the file structure.
+
+---
+
+```bash
+tree -I node_modules
+```
+
+```
+.
+├── README.md
+├── config.js
+├── docs
+│   ├── prompts
+│   │   ├── 01.md
+│   │   ├── 02.md
+│   │   ├── 03.md
+│   │   ├── 04.md
+│   │   ├── 05.md
+│   │   ├── 06.md
+│   │   ├── 07.md
+│   │   ├── 08.md
+│   │   ├── 09.md
+│   │   ├── 10.md
+│   │   ├── 11.md
+│   │   ├── 12.md
+│   │   ├── 13.md
+│   │   ├── 14.md
+│   │   ├── 15.md
+│   │   ├── 16.md
+│   │   ├── 17.md
+│   │   ├── 18.md
+│   │   ├── 19.md
+│   │   ├── 20.md
+│   │   ├── 21.md
+│   │   ├── 22.md
+│   │   ├── 23.md
+│   │   ├── 24.md
+│   │   ├── 25.md
+│   │   ├── 26.md
+│   │   ├── 27.md
+│   │   ├── 28.md
+│   │   ├── 29.md
+│   │   ├── 30.md
+│   │   ├── 31.md
+│   │   ├── 32.md
+│   │   ├── 33.md
+│   │   ├── 34.md
+│   │   ├── 35.md
+│   │   ├── 36.md
+│   │   └── 37.md
+│   └── tutorials
+│       ├── 01-basic-discord-bot.md
+│       ├── 02-mongodb-integration.md
+│       ├── 03-mongoose-schema.md
+│       └── 04-add-repo-command.md
+├── index.js
+├── lib
+│   └── mongo.js
+├── models
+│   └── Repository.js
+├── package-lock.json
+├── package.json
+├── spec.md
+└── test
+    ├── add-repo-command.test.js
+    ├── db.test.js
+    ├── ping.test.js
+    └── repository.model.test.js
+
+6 directories, 53 files
+
+
+~/play/test/vibehive main*
+
+```
+
+---
+
+Structure looks good. Now, I'll read the prompt for the next tutorial.
+
+---
+
+Read file: docs/prompts/05.md
+
+---
+
+Okay, I have the requirements. I will now create the tutorial file `docs/tutorials/05-save-repo-data.md`.
 
 ---
 

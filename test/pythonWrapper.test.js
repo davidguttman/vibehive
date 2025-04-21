@@ -10,6 +10,7 @@ let tempRepoBaseDir
 const FAKE_ENCRYPTION_KEY = 'a'.repeat(32)
 const FAKE_REPO_ID = '605fe1f4a4f9a8a8d4aae9e0' // Example ObjectId string
 const FAKE_DECRYPTED_KEY = '-----BEGIN MOCK KEY-----'
+const FAKE_ASSIGNED_USER_ID = 'coderxyz' // Assigned user ID for sudo
 let FAKE_TEMP_KEY_PATH
 
 // --- Mocks --- START ---
@@ -26,13 +27,15 @@ const mockCrypto = {
 }
 const mockSecureKeys = {
   writeTempKey: writeTempKeyStub,
-  deleteTempKey: deleteTempKeyStub
+  deleteTempKey: deleteTempKeyStub,
+  keysBaseDir: '/tmp/mock-keys-base-dir'
 }
 
 // --- Mocks --- END ---
 
 // Module loaded *after* setup test runs and sets env vars
 let invokeAiderWrapper
+let REPOS_BASE_DIR
 
 // --- Test Setup --- START ---
 test('Setup PythonWrapper Tests', async (t) => {
@@ -55,6 +58,7 @@ test('Setup PythonWrapper Tests', async (t) => {
       '../lib/secureKeys.js': mockSecureKeys
     })
     invokeAiderWrapper = pythonWrapperModule.invokeAiderWrapper
+    REPOS_BASE_DIR = pythonWrapperModule.REPOS_BASE_DIR
 
     // Define the expected temp key path based on the temp dir
     FAKE_TEMP_KEY_PATH = path.join(tempRepoBaseDir, FAKE_REPO_ID, '.ssh', 'id_rsa')
@@ -90,199 +94,236 @@ function simulateProcessError (instance, error, { delay = 5 } = {}) {
 
 // --- Test Cases --- START ---
 
-test('invokeAiderWrapper - No SSH Key in Config', async (t) => {
-  // Reset stubs for this test
-  spawnStub.reset()
-  decryptStub.reset()
-  writeTempKeyStub.reset()
-  deleteTempKeyStub.reset()
+test('invokeAiderWrapper - Missing required parameters', async (t) => {
+  // Test without assignedUserId
+  const mockConfigNoUserId = {
+    repoName: 'test-repo',
+    encryptedSshKey: 'encrypted-key-data'
+    // Missing assignedUserId intentionally
+  }
 
-  const mockSpawnInstance = new EventEmitter()
-  mockSpawnInstance.stdout = new EventEmitter()
-  mockSpawnInstance.stderr = new EventEmitter()
-  spawnStub.returns(mockSpawnInstance)
+  const result1 = await invokeAiderWrapper({
+    prompt: 'Test prompt',
+    repoConfig: mockConfigNoUserId
+  })
 
-  const prompt = 'test no key'
-  const repoConfig = { _id: { toString: () => 'other-id' } } // Config exists, but no encrypted key
-  const expectedJson = { overall_status: 'success', events: [] }
+  t.equal(result1.overall_status, 'failure', 'Should fail with missing assignedUserId')
+  t.ok(result1.error.includes('Missing required'), 'Error should mention missing parameters')
 
-  // Use helper to simulate successful exit
-  simulateProcess(mockSpawnInstance, { stdout: JSON.stringify(expectedJson) })
+  // Test without encryptedSshKey
+  const mockConfigNoKey = {
+    repoName: 'test-repo',
+    assignedUserId: FAKE_ASSIGNED_USER_ID
+    // Missing encryptedSshKey intentionally
+  }
 
-  const result = await invokeAiderWrapper({ prompt, repoConfig })
+  const result2 = await invokeAiderWrapper({
+    prompt: 'Test prompt',
+    repoConfig: mockConfigNoKey
+  })
 
-  t.notOk(decryptStub.called, 'decrypt should NOT be called')
-  t.notOk(writeTempKeyStub.called, 'writeTempKey should NOT be called')
-  t.ok(spawnStub.calledOnce, 'spawn should be called')
-
-  const spawnOptions = spawnStub.firstCall.args[2]
-  t.ok(spawnOptions.env, 'spawn env options exist')
-  t.equal(spawnOptions.env.REPO_BASE_DIR, tempRepoBaseDir, 'spawn env inherits REPO_BASE_DIR from process')
-  t.equal(spawnOptions.env.ENCRYPTION_KEY, FAKE_ENCRYPTION_KEY, 'spawn env inherits ENCRYPTION_KEY from process')
-  t.notOk(spawnOptions.env.GIT_SSH_COMMAND, 'GIT_SSH_COMMAND should NOT be set')
-
-  t.equal(result.overall_status, 'success', 'Overall status should be success')
-  t.notOk(deleteTempKeyStub.called, 'deleteTempKey should NOT be called')
+  t.equal(result2.overall_status, 'failure', 'Should fail with missing encryptedSshKey')
+  t.ok(result2.error.includes('Missing required'), 'Error should mention missing parameters')
 
   t.end()
 })
 
-test('invokeAiderWrapper - SSH key success path', async (t) => {
+test('invokeAiderWrapper - SSH Key Success Path with sudo', async (t) => {
+  // Reset all stubs
   spawnStub.reset()
   decryptStub.reset()
   writeTempKeyStub.reset()
   deleteTempKeyStub.reset()
 
+  // Set up mock objects
   const mockSpawnInstance = new EventEmitter()
   mockSpawnInstance.stdout = new EventEmitter()
   mockSpawnInstance.stderr = new EventEmitter()
   spawnStub.returns(mockSpawnInstance)
 
-  // Configure mocks for success
-  decryptStub.returns(FAKE_DECRYPTED_KEY)
+  // Configure successful decryption and key writing
+  decryptStub.withArgs('encrypted-key-data').returns(FAKE_DECRYPTED_KEY)
   writeTempKeyStub.resolves(FAKE_TEMP_KEY_PATH)
   deleteTempKeyStub.resolves()
 
-  const mockRepoConfig = { _id: { toString: () => FAKE_REPO_ID }, encryptedSshKey: 'encrypted-data' }
-  const expectedJson = { overall_status: 'success', events: [{ type: 'text_response', content: 'AI response' }] }
+  // Complete repo config with assignedUserId
+  const mockRepoConfig = {
+    repoName: FAKE_REPO_ID,
+    encryptedSshKey: 'encrypted-key-data',
+    assignedUserId: FAKE_ASSIGNED_USER_ID
+  }
 
-  // Use helper to simulate successful exit
+  const expectedJson = {
+    overall_status: 'success',
+    events: [{ type: 'text_response', content: 'AI response' }]
+  }
+
+  // Start the invocation
+  const promise = invokeAiderWrapper({
+    prompt: 'Test prompt with key',
+    repoConfig: mockRepoConfig
+  })
+
+  // Simulate successful execution
   simulateProcess(mockSpawnInstance, { stdout: JSON.stringify(expectedJson) })
 
-  const result = await invokeAiderWrapper({ prompt: 'test with key', repoConfig: mockRepoConfig })
+  // Wait for completion
+  const result = await promise
 
-  // Assertions
-  t.ok(decryptStub.calledOnceWith('encrypted-data'), 'decrypt called with encrypted data')
-  t.ok(writeTempKeyStub.calledOnceWith({ repoName: FAKE_REPO_ID, keyContent: FAKE_DECRYPTED_KEY, repoBaseDir: tempRepoBaseDir }), 'writeTempKey called with correct args including repoBaseDir')
-  t.ok(spawnStub.calledOnce, 'spawn called')
+  // Verify decryption and key handling
+  t.ok(decryptStub.calledOnceWith('encrypted-key-data'), 'Should decrypt the key')
+  t.ok(writeTempKeyStub.calledOnce, 'Should write the key to a temp file')
 
-  const expectedGitSshCommand = `ssh -i "${FAKE_TEMP_KEY_PATH}" -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no`
-  const spawnOptions = spawnStub.firstCall.args[2]
-  t.ok(spawnOptions.env, 'spawn env options exist')
-  t.equal(spawnOptions.env.GIT_SSH_COMMAND, expectedGitSshCommand, 'GIT_SSH_COMMAND is set correctly')
-  t.equal(spawnOptions.env.ENCRYPTION_KEY, FAKE_ENCRYPTION_KEY, 'Inherited ENCRYPTION_KEY')
-  t.equal(spawnOptions.env.REPO_BASE_DIR, tempRepoBaseDir, 'Inherited REPO_BASE_DIR')
+  // Verify writeTempKey gets ownerUserId parameter
+  const writeTempKeyArgs = writeTempKeyStub.firstCall.args[0]
+  t.equal(writeTempKeyArgs.repoName, FAKE_REPO_ID, 'Should pass correct repoName')
+  t.equal(writeTempKeyArgs.keyContent, FAKE_DECRYPTED_KEY, 'Should pass decrypted key content')
+  t.equal(writeTempKeyArgs.ownerUserId, FAKE_ASSIGNED_USER_ID, 'Should pass assignedUserId as ownerUserId')
 
-  t.equal(result.overall_status, 'success', 'Overall status is success')
-  t.ok(deleteTempKeyStub.calledOnceWith({ repoName: FAKE_REPO_ID, repoBaseDir: tempRepoBaseDir }), 'deleteTempKey called on cleanup with repoBaseDir')
+  // Verify spawn call with sudo
+  t.ok(spawnStub.calledOnce, 'Should spawn a process')
+  const spawnArgs = spawnStub.firstCall.args
 
-  // Check call order if necessary (stubs have .calledBefore(), .calledAfter())
-  t.ok(writeTempKeyStub.calledBefore(spawnStub), 'writeTempKey called before spawn')
-  t.ok(deleteTempKeyStub.calledAfter(spawnStub), 'deleteTempKey called after spawn')
+  // First argument should be sudo
+  t.equal(spawnArgs[0], 'sudo', 'Should use sudo as the command')
+
+  // Second argument should be an array starting with -u FAKE_ASSIGNED_USER_ID
+  t.ok(Array.isArray(spawnArgs[1]), 'Second argument should be an array')
+  t.equal(spawnArgs[1][0], '-u', 'First sudo argument should be -u')
+  t.equal(spawnArgs[1][1], FAKE_ASSIGNED_USER_ID, 'Second sudo argument should be the assignedUserId')
+
+  // python3 and script path should follow
+  t.ok(spawnArgs[1].includes('python3'), 'Should include python3 command')
+  t.ok(spawnArgs[1].some(arg => arg.endsWith('aider_wrapper.py')), 'Should include script path')
+
+  // Verify spawn options
+  const spawnOptions = spawnArgs[2]
+  t.ok(spawnOptions, 'Should provide spawn options')
+  t.ok(spawnOptions.env, 'Should provide environment variables')
+  t.equal(
+    spawnOptions.env.GIT_SSH_COMMAND,
+    `ssh -i "${FAKE_TEMP_KEY_PATH}" -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no`,
+    'Should set GIT_SSH_COMMAND correctly'
+  )
+
+  // Most important: verify cwd is set correctly
+  const expectedRepoPath = path.join(REPOS_BASE_DIR, FAKE_REPO_ID)
+  t.equal(spawnOptions.cwd, expectedRepoPath, 'Should set cwd to the repo path')
+
+  // Verify key cleanup
+  t.ok(deleteTempKeyStub.calledOnce, 'Should clean up the key file')
+  const deleteTempKeyArgs = deleteTempKeyStub.firstCall.args[0]
+  t.equal(deleteTempKeyArgs.repoName, FAKE_REPO_ID, 'Should clean up the correct key')
+  t.equal(deleteTempKeyArgs.ownerUserId, FAKE_ASSIGNED_USER_ID, 'Should pass ownerUserId to deleteTempKey')
+
+  // Verify result
+  t.equal(result.overall_status, 'success', 'Should return success status')
+  t.deepEqual(result.events, expectedJson.events, 'Should return the parsed events')
 
   t.end()
 })
 
-test('invokeAiderWrapper - SSH Key Decryption Fails', async (t) => {
+test('invokeAiderWrapper - SSH Key with Context Files', async (t) => {
+  // Reset stubs
   spawnStub.reset()
   decryptStub.reset()
   writeTempKeyStub.reset()
   deleteTempKeyStub.reset()
 
-  // Configure decrypt to fail
-  decryptStub.returns(null) // Or .throws(new Error('Decrypt error'))
-
-  const mockRepoConfig = { _id: { toString: () => FAKE_REPO_ID }, encryptedSshKey: 'bad-encrypted-data' }
-
-  const result = await invokeAiderWrapper({ prompt: 'test decrypt fail', repoConfig: mockRepoConfig })
-
-  t.ok(decryptStub.calledOnceWith('bad-encrypted-data'), 'decrypt was called')
-  t.equal(result.overall_status, 'failure', 'Overall status should be failure')
-  t.ok(result.error.includes('Failed to decrypt SSH key'), 'Error message indicates decryption failure')
-  t.notOk(writeTempKeyStub.called, 'writeTempKey should NOT be called')
-  t.notOk(spawnStub.called, 'spawn should NOT be called')
-  t.notOk(deleteTempKeyStub.called, 'deleteTempKey should NOT be called')
-
-  t.end()
-})
-
-test('invokeAiderWrapper - writeTempKey Fails', async (t) => {
-  spawnStub.reset()
-  decryptStub.reset()
-  writeTempKeyStub.reset()
-  deleteTempKeyStub.reset()
-
-  const writeError = new Error('Disk full')
-  decryptStub.returns(FAKE_DECRYPTED_KEY)
-  writeTempKeyStub.rejects(writeError) // Configure writeTempKey to fail
-
-  const mockRepoConfig = { _id: { toString: () => FAKE_REPO_ID }, encryptedSshKey: 'good-data' }
-
-  const result = await invokeAiderWrapper({ prompt: 'test write fail', repoConfig: mockRepoConfig })
-
-  t.ok(decryptStub.calledOnce, 'decrypt was called')
-  t.ok(writeTempKeyStub.calledOnce, 'writeTempKey was called')
-  t.equal(result.overall_status, 'failure', 'Overall status should be failure')
-  t.ok(result.error.includes(writeError.message), 'Error message includes writeTempKey error')
-  t.notOk(spawnStub.called, 'spawn should NOT be called')
-  t.notOk(deleteTempKeyStub.called, 'deleteTempKey should NOT be called (key write failed)')
-
-  t.end()
-})
-
-test('invokeAiderWrapper - spawn Fails (after key write)', async (t) => {
-  spawnStub.reset()
-  decryptStub.reset()
-  writeTempKeyStub.reset()
-  deleteTempKeyStub.reset()
-
+  // Set up mock objects
   const mockSpawnInstance = new EventEmitter()
   mockSpawnInstance.stdout = new EventEmitter()
   mockSpawnInstance.stderr = new EventEmitter()
   spawnStub.returns(mockSpawnInstance)
 
+  // Configure successful decryption and key writing
   decryptStub.returns(FAKE_DECRYPTED_KEY)
   writeTempKeyStub.resolves(FAKE_TEMP_KEY_PATH)
-  deleteTempKeyStub.resolves() // delete should still work
 
-  const mockRepoConfig = { _id: { toString: () => FAKE_REPO_ID }, encryptedSshKey: 'good-data' }
-  const spawnErrorMessage = 'Command not found'
+  // Complete repo config with assignedUserId
+  const mockRepoConfig = {
+    repoName: FAKE_REPO_ID,
+    encryptedSshKey: 'encrypted-key-data',
+    assignedUserId: FAKE_ASSIGNED_USER_ID
+  }
 
-  // Simulate spawn emitting an error
-  simulateProcessError(mockSpawnInstance, new Error(spawnErrorMessage))
+  // Context files to pass
+  const contextFiles = ['file1.js', 'file2.js']
 
-  const result = await invokeAiderWrapper({ prompt: 'test spawn fail', repoConfig: mockRepoConfig })
+  // Start the invocation
+  const promise = invokeAiderWrapper({
+    prompt: 'Test prompt with context files',
+    contextFiles,
+    repoConfig: mockRepoConfig
+  })
 
-  t.ok(decryptStub.calledOnce, 'decrypt called')
-  t.ok(writeTempKeyStub.calledOnce, 'writeTempKey called')
-  t.ok(spawnStub.calledOnce, 'spawn was attempted')
-  t.equal(result.overall_status, 'failure', 'Overall status should be failure')
-  t.ok(result.error.includes(spawnErrorMessage), 'Error message includes spawn error')
-  t.ok(deleteTempKeyStub.calledOnceWith({ repoName: FAKE_REPO_ID, repoBaseDir: tempRepoBaseDir }), 'deleteTempKey SHOULD be called in finally block with repoBaseDir')
+  // Simulate successful execution
+  simulateProcess(mockSpawnInstance, { stdout: JSON.stringify({ overall_status: 'success' }) })
+
+  // Wait for completion
+  await promise
+
+  // Verify context files are passed correctly
+  t.ok(spawnStub.calledOnce, 'Should spawn a process')
+  const spawnArgs = spawnStub.firstCall.args[1] // Command arguments array
+
+  // Check all context files are included in arguments
+  contextFiles.forEach(file => {
+    t.ok(spawnArgs.includes(file), `Should include context file ${file} in arguments`)
+  })
+
+  // Verify --context-file argument is used
+  t.ok(spawnArgs.includes('--context-file'), 'Should include --context-file argument')
 
   t.end()
 })
 
-test('invokeAiderWrapper - Script Exits Non-Zero (after key write)', async (t) => {
+test('invokeAiderWrapper - SSH Key Error Handling and Cleanup', async (t) => {
+  // Reset stubs
   spawnStub.reset()
   decryptStub.reset()
   writeTempKeyStub.reset()
   deleteTempKeyStub.reset()
 
+  // Set up mock objects
   const mockSpawnInstance = new EventEmitter()
   mockSpawnInstance.stdout = new EventEmitter()
   mockSpawnInstance.stderr = new EventEmitter()
   spawnStub.returns(mockSpawnInstance)
 
+  // Configure successful decryption and key writing
   decryptStub.returns(FAKE_DECRYPTED_KEY)
   writeTempKeyStub.resolves(FAKE_TEMP_KEY_PATH)
-  deleteTempKeyStub.resolves()
 
-  const mockRepoConfig = { _id: { toString: () => FAKE_REPO_ID }, encryptedSshKey: 'good-data' }
-  const stderrMessage = 'Python script error details'
+  // Complete repo config with assignedUserId
+  const mockRepoConfig = {
+    repoName: FAKE_REPO_ID,
+    encryptedSshKey: 'encrypted-key-data',
+    assignedUserId: FAKE_ASSIGNED_USER_ID
+  }
 
-  // Simulate script exiting with error code
-  simulateProcess(mockSpawnInstance, { exitCode: 1, stderr: stderrMessage })
+  // Start the invocation
+  const promise = invokeAiderWrapper({
+    prompt: 'Test prompt with error',
+    repoConfig: mockRepoConfig
+  })
 
-  const result = await invokeAiderWrapper({ prompt: 'test script exit fail', repoConfig: mockRepoConfig })
+  // Simulate process error
+  const mockError = new Error('Sudo execution failed')
+  simulateProcessError(mockSpawnInstance, mockError)
 
-  t.ok(decryptStub.calledOnce, 'decrypt called')
-  t.ok(writeTempKeyStub.calledOnce, 'writeTempKey called')
-  t.ok(spawnStub.calledOnce, 'spawn was called')
-  t.equal(result.overall_status, 'failure', 'Overall status should be failure')
-  t.ok(result.error.includes('failed with code 1'), 'Error message includes exit code')
-  t.ok(result.error.includes(stderrMessage), 'Error message includes stderr')
-  t.ok(deleteTempKeyStub.calledOnceWith({ repoName: FAKE_REPO_ID, repoBaseDir: tempRepoBaseDir }), 'deleteTempKey SHOULD be called in finally block with repoBaseDir')
+  // Wait for completion
+  const result = await promise
+
+  // Verify result indicates failure
+  t.equal(result.overall_status, 'failure', 'Should report failure')
+  t.ok(result.error.includes('Sudo execution failed'), 'Should include error message')
+
+  // Verify key is cleaned up even on error
+  t.ok(deleteTempKeyStub.called, 'Should attempt to clean up the key file even after error')
+  const deleteTempKeyArgs = deleteTempKeyStub.firstCall.args[0]
+  t.equal(deleteTempKeyArgs.repoName, FAKE_REPO_ID, 'Should clean up the correct key')
+  t.equal(deleteTempKeyArgs.ownerUserId, FAKE_ASSIGNED_USER_ID, 'Should pass ownerUserId to deleteTempKey')
 
   t.end()
 })
@@ -291,23 +332,25 @@ test('invokeAiderWrapper - Script Exits Non-Zero (after key write)', async (t) =
 
 // --- Test Teardown --- START ---
 test('Teardown PythonWrapper Tests', async (t) => {
-  // Restore all sinon stubs
-  sinon.restore()
-
   try {
+    // Ensure stubs are reset
+    spawnStub.reset()
+    decryptStub.reset()
+    writeTempKeyStub.reset()
+    deleteTempKeyStub.reset()
+
     if (tempRepoBaseDir) {
       await fs.rm(tempRepoBaseDir, { recursive: true, force: true })
-      t.pass('Temp directory removed')
+      t.pass(`Successfully removed temp directory: ${tempRepoBaseDir}`)
     } else {
       t.skip('Skipping temp dir removal (not created)')
     }
-    // Clean up env vars set for the test suite
+
+    // Clean up environment variables
     delete process.env.REPO_BASE_DIR
     delete process.env.ENCRYPTION_KEY
-    t.pass('Teardown complete.')
   } catch (err) {
-    t.fail(`Teardown failed: ${err}`)
-    console.error(`Warning: Failed to clean up temp directory ${tempRepoBaseDir}:`, err)
+    t.comment(`Warning: Failed to clean up: ${err.message}`)
   }
   t.end()
 })

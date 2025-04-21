@@ -26,5 +26,10 @@
     "sinon": "^20.0.0",
     "standard": "^17.1.2",
     "tape": "^5.9.0"
+  },
+  "config": {
+    "mongodbMemoryServer": {
+      "version": "4.4.29"
+    }
   }
 }

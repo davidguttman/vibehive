@@ -2,6 +2,7 @@ const { Events } = require('discord.js')
 const Repository = require('../models/Repository') // Adjust path as needed
 const { encrypt } = require('../lib/crypto') // Import encrypt
 const mongoose = require('mongoose') // Need mongoose for validation error check
+const { invokeAiderWrapper } = require('../lib/pythonWrapper.js') // <<< Added
 
 async function handleFilesCommand (interaction) {
   const repo = await Repository.findOne({ discordChannelId: interaction.channelId })
@@ -205,6 +206,124 @@ async function handleAddRepoCommand (interaction) {
     await interaction.followUp({ content: userErrorMessage, ephemeral: true })
   }
 }
+
+// <<< Start handleMentionInteraction >>>
+async function handleMentionInteraction (message, client) {
+  // 1. Ignore bot messages (already handled in execute, but good safety)
+  if (message.author.bot) return
+
+  // 2. Extract prompt (remove bot mention)
+  const prompt = message.content.replace(/<@!?\d+>/g, '').trim()
+
+  if (!prompt) {
+    // Handle cases where the bot is mentioned but no text follows
+    console.log(`Mention received without a prompt in channel ${message.channel.id}.`)
+    await message.reply({ content: 'You mentioned me! What can I help you with? Please provide a prompt after the mention.', ephemeral: false })
+    return
+  }
+
+  console.log(`Bot mentioned by ${message.author.tag} in channel ${message.channel.id}`)
+  console.log(`Extracted prompt: "${prompt}"`)
+
+  // 3. Find repository configuration for the channel
+  let repo
+  try {
+    repo = await Repository.findOne({ discordChannelId: message.channel.id })
+
+    if (!repo) {
+      console.log(`No repository configured for channel ${message.channel.id}`)
+      await message.reply({ content: 'No repository configured for this channel. Use `/addrepo` to set one up.', ephemeral: true })
+      return
+    }
+
+    console.log(`Found repository config for channel ${message.channel.id}: ${repo.repoUrl}`)
+  } catch (dbError) {
+    console.error(`Database error finding repository for channel ${message.channel.id}:`, dbError)
+    await message.reply({ content: 'There was a database error trying to find the repository configuration.', ephemeral: true })
+    return
+  }
+
+  // 4. Show initial processing message
+  let processingMessage
+  try {
+    processingMessage = await message.reply('Processing your request with Aider...')
+  } catch (replyError) {
+    console.error('Failed to send initial processing message:', replyError)
+    // Attempt to inform the user in the channel if the direct reply failed
+    try {
+      await message.channel.send(`Sorry ${message.author}, I couldn't send a reply to your message, but I'm still trying to process your request.`)
+    } catch (channelSendError) {
+      console.error('Failed even to send message to channel:', channelSendError)
+    }
+    // Continue processing despite reply failure
+  }
+
+  // 5. Invoke the Python wrapper
+  let result
+  try {
+    // Pass the entire repo document as repoConfig
+    result = await invokeAiderWrapper({
+      prompt,
+      contextFiles: repo.contextFiles || [],
+      repoConfig: repo // <<< Pass the full repo object
+    })
+
+    console.log('Aider wrapper result:', result)
+
+    // 6. Handle the wrapper result
+    if (result.overall_status === 'success') {
+      // Find the text response event
+      const textResponse = result.events?.find(e => e.type === 'text_response')?.content
+
+      if (textResponse) {
+        console.log('Sending text response to Discord:', textResponse)
+        // Send the successful response (might need chunking for long messages)
+        // For now, send directly. Consider using utility for splitting messages.
+        // TODO: Implement message splitting if response exceeds Discord limit
+        await message.reply({ content: textResponse, ephemeral: false }) // Reply directly to the mention
+          .catch(async (err) => { // If reply fails (e.g., original message deleted), try sending to channel
+            console.warn('Failed to reply directly to mention, sending to channel instead.', err)
+            await message.channel.send(`${message.author} ${textResponse}`)
+          })
+      } else {
+        console.log('Script execution succeeded, but no text_response event found.')
+        await message.reply({ content: 'Processing completed, but no text response was generated.', ephemeral: false })
+          .catch(async (err) => {
+            console.warn('Failed to reply directly (no text response), sending to channel instead.', err)
+            await message.channel.send(`${message.author} Processing completed, but no text response was generated.`)
+          })
+      }
+    } else {
+      // Handle failure (script execution or JSON parsing error)
+      console.error(`Aider wrapper failed: ${result.error}`)
+      // Provide a generic error message to the user
+      await message.reply({ content: `Sorry, there was an error processing your request with the script: ${result.error || 'Unknown error'}.`, ephemeral: true })
+        .catch(async (err) => {
+          console.warn('Failed to reply directly (script failure), sending to channel instead.', err)
+          await message.channel.send(`${message.author} Sorry, there was an error processing your request with the script.`)
+        })
+    }
+  } catch (wrapperError) {
+    // Catch errors *within* the invokeAiderWrapper call or result handling
+    console.error('Error invoking or handling result from Aider wrapper:', wrapperError)
+    await message.reply({ content: 'An unexpected error occurred while communicating with the processing script.', ephemeral: true })
+      .catch(async (err) => {
+        console.warn('Failed to reply directly (wrapper error), sending to channel instead.', err)
+        await message.channel.send(`${message.author} An unexpected error occurred while communicating with the processing script.`)
+      })
+  } finally {
+    // 7. Attempt to delete the "Processing..." message if it exists
+    if (processingMessage) {
+      try {
+        await processingMessage.delete()
+      } catch (deleteError) {
+        // Ignore deletion errors as they aren't critical
+        console.warn('Failed to delete processing message (non-critical):', deleteError)
+      }
+    }
+  }
+}
+// <<< End handleMentionInteraction >>>
 
 module.exports = {
   name: Events.InteractionCreate,

@@ -24,6 +24,9 @@ const repositorySchema = new mongoose.Schema({
   },
   encryptedSshKey: {
     type: String
+  },
+  assignedUserId: {
+    type: String
   }
   // Add more fields as needed later (e.g., last commit checked, owner, etc.)
 }, {

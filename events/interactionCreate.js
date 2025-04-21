@@ -4,6 +4,9 @@ const { encrypt } = require('../lib/crypto') // Import encrypt
 const mongoose = require('mongoose') // Need mongoose for validation error check
 const { invokeAiderWrapper } = require('../lib/pythonWrapper.js') // <<< Added
 
+// Define the pool of available coder users
+const CODER_USER_POOL = ['coder1', 'coder2', 'coder3', 'coder4', 'coder5']
+
 async function handleFilesCommand (interaction) {
   const repo = await Repository.findOne({ discordChannelId: interaction.channelId })
   if (!repo) {
@@ -123,16 +126,12 @@ async function handleAddRepoCommand (interaction) {
   await interaction.deferReply({ ephemeral: true }) // Defer reply as fetching/encrypting might take time
 
   const repoUrl = interaction.options.getString('repository')
-  // --- New Attachment Handling --- START ---
   const attachment = interaction.options.getAttachment('ssh_key')
+  const channelId = interaction.channelId // Using channelId
 
   if (!attachment) {
-    // This shouldn't happen if the option is required, but good practice to check
     return interaction.followUp({ content: 'Error: SSH key attachment is missing.', ephemeral: true })
   }
-
-  // Optional: Add checks for attachment.contentType or size if desired
-  // console.log('Attachment type:', attachment.contentType)
 
   let sshKeyContent
   try {
@@ -157,21 +156,41 @@ async function handleAddRepoCommand (interaction) {
     console.log('SSH key encrypted successfully.')
   } catch (error) {
     console.error('Error encrypting SSH key:', error)
-    // Provide a less specific error to the user for security
     return interaction.followUp({ content: 'Error processing the SSH key. Ensure it is a valid key file and the ENCRYPTION_KEY is set correctly.', ephemeral: true })
   }
-  // --- New Attachment Handling --- END ---
-
-  const channelId = interaction.channelId
 
   try {
+    // --- Coder User Assignment Logic --- START ---
+    // 1. Find currently used assignedUserIds (for any channel)
+    // Note: This is a global pool across all channels currently.
+    const usedIdsResult = await Repository.distinct('assignedUserId')
+    const usedIds = new Set(usedIdsResult.filter(id => id != null))
+
+    // 2. Find the first available ID from the pool
+    let assignedUserId = null
+    for (const userId of CODER_USER_POOL) {
+      if (!usedIds.has(userId)) {
+        assignedUserId = userId
+        break
+      }
+    }
+
+    // 3. Handle pool exhaustion
+    if (!assignedUserId) {
+      console.warn('Maximum repository limit reached (coder pool exhausted).')
+      return interaction.followUp({ content: 'Maximum repository limit reached. Cannot add more repositories.', ephemeral: true })
+    }
+    console.log(`Assigning coder user ID: ${assignedUserId} to channel ${channelId}`)
+    // --- Coder User Assignment Logic --- END ---
+
     // Use updateOne with upsert:true to handle both create and update
     const result = await Repository.updateOne(
       { discordChannelId: channelId },
       {
         $set: {
           repoUrl,
-          encryptedSshKey: encryptedKey // Store the encrypted key
+          encryptedSshKey: encryptedKey, // Store the encrypted key
+          assignedUserId // <-- Store the assigned user ID
         },
         $setOnInsert: { discordChannelId: channelId } // Set channelId only on insert
       },
@@ -179,29 +198,32 @@ async function handleAddRepoCommand (interaction) {
     )
 
     let confirmationMessage = ''
+    const assignedMsg = `Assigned User ID: ${assignedUserId}.`
     if (result.upsertedId) {
-      confirmationMessage = `Repository configured: ${repoUrl}. SSH key uploaded and secured.`
-      console.log(`Repository inserted for channel ${channelId}`)
+      confirmationMessage = `Repository configured: ${repoUrl}. SSH key uploaded and secured. ${assignedMsg}`
+      console.log(`Repository inserted for channel ${channelId}, assigned ${assignedUserId}`)
     } else if (result.modifiedCount > 0) {
-      confirmationMessage = `Repository configuration updated: ${repoUrl}. New SSH key uploaded and secured.`
-      console.log(`Repository updated for channel ${channelId}`)
+      const previousDoc = await Repository.findOne({ discordChannelId: channelId }).select('assignedUserId').lean()
+      if (previousDoc && previousDoc.assignedUserId !== assignedUserId) {
+        confirmationMessage = `Repository configuration updated: ${repoUrl}. New SSH key uploaded. ${assignedMsg}`
+        console.log(`Repository updated for channel ${channelId}, assigned/updated to ${assignedUserId}`)
+      } else {
+        confirmationMessage = `Repository configuration updated: ${repoUrl}. SSH key re-uploaded. ${assignedMsg}`
+        console.log(`Repository updated for channel ${channelId} (key updated, user ${assignedUserId} same or already set)`)
+      }
     } else {
-      // This means the repoUrl and encryptedSshKey were the same as already stored
-      confirmationMessage = `Repository configuration unchanged (already set to ${repoUrl}). SSH key re-uploaded and secured.`
-      console.log(`Repository unchanged for channel ${channelId}`)
+      confirmationMessage = `Repository configuration unchanged (already set to ${repoUrl}). SSH key re-uploaded. ${assignedMsg}`
+      console.log(`Repository unchanged for channel ${channelId} (user ${assignedUserId})`)
     }
 
     await interaction.followUp({ content: confirmationMessage, ephemeral: true })
   } catch (error) {
     console.error(`Database error saving repository for channel ${channelId}:`, error)
     let userErrorMessage = 'An error occurred while saving the repository configuration.'
-    // Use instanceof for better error type checking
     if (error instanceof mongoose.Error.ValidationError) {
       userErrorMessage = `Validation Error: ${Object.values(error.errors).map(e => e.message).join(', ')}`
     } else if (error.code === 11000) {
-      // This specific duplicate key error is less likely with updateOne/upsert on channelId,
-      // unless another unique index exists.
-      userErrorMessage = 'A unique constraint was violated (maybe repository URL already exists for another channel?).'
+      userErrorMessage = 'A unique constraint was violated (maybe this channel already has a repo?).'
     }
     await interaction.followUp({ content: userErrorMessage, ephemeral: true })
   }
@@ -340,14 +362,20 @@ module.exports = {
     try {
       if (commandName === 'ping') {
         await interaction.reply('Pong!')
-      } else if (commandName === 'addrepo') {
-        await handleAddRepoCommand(interaction) // Use the new handler
+      } else if (commandName === 'add-repo') {
+        await handleAddRepoCommand(interaction)
       } else if (commandName === 'files') {
         await handleFilesCommand(interaction)
       } else if (commandName === 'add') {
         await handleAddCommand(interaction)
       } else if (commandName === 'drop') {
         await handleDropCommand(interaction)
+      } else {
+        // Handle other chat input commands or provide a default response
+        console.log(`Received unhandled chat input command: ${commandName}`)
+        // You might want to fetch the command from client.commands and execute it if it exists
+        // Example: const command = interaction.client.commands.get(commandName);
+        // if (command) { await command.execute(interaction); }
       }
     } catch (error) {
       console.error(`Error executing command ${commandName} for user ${interaction.user.tag} in channel ${interaction.channelId}:`, error)

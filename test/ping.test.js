@@ -1,5 +1,5 @@
 // test/ping.test.js
-const test = require('tape')
+const test = require('ava')
 
 // Mock interaction object (very basic)
 const createMockInteraction = (commandName) => ({
@@ -29,17 +29,15 @@ async function handlePingInteraction (interaction) {
   return 'Not a ping command'
 }
 
-test('Ping Command Handler', async (t) => {
+test.serial('Ping Command Handler', async (t) => {
   const mockPingInteraction = createMockInteraction('ping')
   const result = await handlePingInteraction(mockPingInteraction)
 
-  t.equal(result, 'Replied Pong!', 'Should reply Pong! to /ping command')
+  t.is(result, 'Replied Pong!', 'Should reply Pong! to /ping command')
 
   const mockOtherInteraction = createMockInteraction('other')
   const otherResult = await handlePingInteraction(mockOtherInteraction)
-  t.equal(otherResult, 'Not a ping command', 'Should ignore non-ping commands')
-
-  t.end() // End the test explicitly
+  t.is(otherResult, 'Not a ping command', 'Should ignore non-ping commands')
 })
 
 // Add more tests as needed

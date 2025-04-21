@@ -1,5 +1,5 @@
 // test/aider_wrapper.test.js
-const test = require('tape')
+const test = require('ava')
 const { execFile } = require('child_process')
 const path = require('path')
 
@@ -15,30 +15,35 @@ function runScript (args, callback) {
   })
 }
 
-test('Aider Wrapper Script - Success Case', (t) => {
+test.serial('Aider Wrapper Script - Success Case', async (t) => {
   const promptText = 'hello world'
-  runScript(['--prompt', promptText], (error, stdout, stderr) => {
-    t.error(error, 'Script should exit without error (error code 0)')
-    t.equal(stderr, '', 'Stderr should be empty on success')
+  await new Promise((resolve, reject) => {
+    runScript(['--prompt', promptText], (error, stdout, stderr) => {
+      try {
+        t.falsy(error, 'Script should exit without error (error code 0)')
+        t.is(stderr, '', 'Stderr should be empty on success')
 
-    try {
-      const output = JSON.parse(stdout)
-      t.ok(output, 'Stdout should be valid JSON')
-      t.equal(output.overall_status, 'success', 'Status should be success')
-      t.equal(output.error, null, 'Error field should be null')
-      t.ok(Array.isArray(output.events), 'Events should be an array')
-      t.equal(output.events.length, 1, 'Events array should have one element')
-      t.equal(output.events[0].type, 'text_response', 'Event type should be text_response')
-      t.equal(output.events[0].content, `Placeholder response for prompt: ${promptText}`, 'Event content should contain the prompt')
-    } catch (parseError) {
-      t.fail(`Failed to parse JSON output: ${parseError}\nOutput: ${stdout}`)
-    }
-
-    t.end()
+        try {
+          const output = JSON.parse(stdout)
+          t.truthy(output, 'Stdout should be valid JSON')
+          t.is(output.overall_status, 'success', 'Status should be success')
+          t.is(output.error, null, 'Error field should be null')
+          t.true(Array.isArray(output.events), 'Events should be an array')
+          t.is(output.events.length, 1, 'Events array should have one element')
+          t.is(output.events[0].type, 'text_response', 'Event type should be text_response')
+          t.is(output.events[0].content, `Placeholder response for prompt: ${promptText}`, 'Event content should contain the prompt')
+        } catch (parseError) {
+          t.fail(`Failed to parse JSON output: ${parseError}\nOutput: ${stdout}`)
+        }
+        resolve()
+      } catch (assertionError) {
+        reject(assertionError)
+      }
+    })
   })
 })
 
-test('Aider Wrapper Script - Success Case with Context Files', (t) => {
+test.serial('Aider Wrapper Script - Success Case with Context Files', async (t) => {
   const promptText = 'process these files'
   const contextFiles = ['file1.txt', 'path/to/file2.js']
   const args = ['--prompt', promptText]
@@ -46,39 +51,50 @@ test('Aider Wrapper Script - Success Case with Context Files', (t) => {
     args.push('--context-file', file)
   })
 
-  runScript(args, (error, stdout, stderr) => {
-    t.error(error, 'Script should exit without error (error code 0)')
-    t.equal(stderr, '', 'Stderr should be empty on success')
+  await new Promise((resolve, reject) => {
+    runScript(args, (error, stdout, stderr) => {
+      try {
+        t.falsy(error, 'Script should exit without error (error code 0)')
+        t.is(stderr, '', 'Stderr should be empty on success')
 
-    try {
-      const output = JSON.parse(stdout)
-      t.ok(output, 'Stdout should be valid JSON')
-      t.equal(output.overall_status, 'success', 'Status should be success')
-      t.equal(output.error, null, 'Error field should be null')
-      t.ok(Array.isArray(output.events), 'Events should be an array')
-      t.ok(output.events.length > 0, 'Events array should have at least one element') // Basic check
-      t.equal(output.events[0].type, 'text_response', 'First event type should be text_response')
-      t.ok(output.events[0].content.includes(promptText), 'Event content should contain the prompt')
-      t.ok(output.received_context_files, 'Output should contain received_context_files field')
-      t.deepEqual(output.received_context_files, contextFiles, 'received_context_files should match input context files')
-    } catch (parseError) {
-      t.fail(`Failed to parse JSON output: ${parseError}\nOutput: ${stdout}`)
-    }
-
-    t.end()
+        try {
+          const output = JSON.parse(stdout)
+          t.truthy(output, 'Stdout should be valid JSON')
+          t.is(output.overall_status, 'success', 'Status should be success')
+          t.is(output.error, null, 'Error field should be null')
+          t.true(Array.isArray(output.events), 'Events should be an array')
+          t.truthy(output.events.length > 0, 'Events array should have at least one element')
+          t.is(output.events[0].type, 'text_response', 'First event type should be text_response')
+          t.truthy(output.events[0].content.includes(promptText), 'Event content should contain the prompt')
+          t.truthy(output.received_context_files, 'Output should contain received_context_files field')
+          t.deepEqual(output.received_context_files, contextFiles, 'received_context_files should match input context files')
+        } catch (parseError) {
+          t.fail(`Failed to parse JSON output: ${parseError}\nOutput: ${stdout}`)
+        }
+        resolve()
+      } catch (assertionError) {
+        reject(assertionError)
+      }
+    })
   })
 })
 
-test('Aider Wrapper Script - Error Case (Missing Prompt)', (t) => {
-  runScript([], (error, stdout, stderr) => {
-    t.ok(error, 'Script should exit with an error (non-zero code)')
-    // Different Python/argparse versions might exit with 1 or 2
-    t.ok(error.code !== 0, `Exit code should be non-zero (was ${error.code})`)
-    t.ok(stderr.includes('Error: --prompt argument is required.'), 'Stderr should contain the custom error message')
-    // Depending on argparse version, stdout might be empty or contain usage info
-    // t.equal(stdout, '', 'Stdout should ideally be empty on argument error')
-    t.comment(`Stdout content on error: ${stdout}`)
-    t.comment(`Stderr content on error: ${stderr}`)
-    t.end()
+test.serial('Aider Wrapper Script - Error Case (Missing Prompt)', async (t) => {
+  await new Promise((resolve, reject) => {
+    runScript([], (error, stdout, stderr) => {
+      try {
+        t.truthy(error, 'Script should exit with an error (non-zero code)')
+        // Different Python/argparse versions might exit with 1 or 2
+        t.truthy(error.code !== 0, `Exit code should be non-zero (was ${error.code})`)
+        t.truthy(stderr.includes('Error: --prompt argument is required.'), 'Stderr should contain the custom error message')
+        // Depending on argparse version, stdout might be empty or contain usage info
+        // t.is(stdout, '', 'Stdout should ideally be empty on argument error')
+        t.log(`Stdout content on error: ${stdout}`)
+        t.log(`Stderr content on error: ${stderr}`)
+        resolve()
+      } catch (assertionError) {
+        reject(assertionError)
+      }
+    })
   })
 })

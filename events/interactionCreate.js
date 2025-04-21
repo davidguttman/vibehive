@@ -1,7 +1,11 @@
 const { Events } = require('discord.js')
+const path = require('node:path') // <<< Added
+const fs = require('node:fs/promises') // <<< Added
+const { execFileSync, spawn } = require('node:child_process') // <<< Added
 const Repository = require('../models/Repository') // Adjust path as needed
-const { encrypt } = require('../lib/crypto') // Import encrypt
-const mongoose = require('mongoose') // Need mongoose for validation error check
+const { encrypt, decrypt } = require('../lib/crypto') // Import encrypt and decrypt
+const { writeTempKey, deleteTempKey } = require('../lib/secureKeys') // <<< Added
+const config = require('../config') // <<< Added
 const { invokeAiderWrapper } = require('../lib/pythonWrapper.js') // <<< Added
 
 // Define the pool of available coder users
@@ -118,64 +122,73 @@ async function handleDropCommand (interaction) {
 
 async function handleAddRepoCommand (interaction) {
   // Permission Check (Example: Assuming only admins can run this)
-  // You might have a more sophisticated role/permission check
   if (!interaction.member.permissions.has('Administrator')) {
     return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true })
   }
 
-  await interaction.deferReply({ ephemeral: true }) // Defer reply as fetching/encrypting might take time
+  await interaction.deferReply({ ephemeral: true }) // Defer reply
 
-  const repoUrl = interaction.options.getString('repository')
-  const attachment = interaction.options.getAttachment('ssh_key')
-  const channelId = interaction.channelId // Using channelId
+  // Assign these early for use in potential cleanup blocks
+  let repoPath = null
+  let keyFilePath = null
+  let assignedUserId = null // Defined here for scope in finally
+  let repoDirName = null // Defined here for scope in finally
+  let repoSaved = false // <<< Added: Track if the DB save happened
 
-  if (!attachment) {
-    return interaction.followUp({ content: 'Error: SSH key attachment is missing.', ephemeral: true })
-  }
-
-  let sshKeyContent
   try {
-    console.log(`Fetching SSH key from: ${attachment.url}`)
-    const response = await fetch(attachment.url)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch key (${response.status}): ${response.statusText}`)
+    const repoUrl = interaction.options.getString('repository')
+    const attachment = interaction.options.getAttachment('ssh_key')
+    const channelId = interaction.channelId // Using channelId
+    const guildId = interaction.guildId
+
+    if (!attachment) {
+      return interaction.followUp({ content: 'Error: SSH key attachment is missing.', ephemeral: true })
     }
-    sshKeyContent = await response.text()
-    if (!sshKeyContent || sshKeyContent.trim() === '') {
-      throw new Error('Fetched key content is empty or whitespace.')
+    if (!guildId) {
+      console.error('Guild ID is missing from interaction.')
+      return interaction.followUp({ content: 'Error: Guild ID is missing. Cannot create repository directory.', ephemeral: true })
     }
-    console.log('SSH key fetched successfully.')
-  } catch (error) {
-    console.error('Error fetching SSH key attachment:', error)
-    return interaction.followUp({ content: `Error fetching the SSH key file: ${error.message}. Please check the URL or try again.`, ephemeral: true })
-  }
+    if (!config.repoBaseDir) {
+      console.error('REPO_BASE_DIR is not configured.')
+      return interaction.followUp({ content: 'Internal Server Error: Repository base directory not configured.', ephemeral: true })
+    }
 
-  let encryptedKey
-  try {
-    encryptedKey = encrypt(sshKeyContent)
-    console.log('SSH key encrypted successfully.')
-  } catch (error) {
-    console.error('Error encrypting SSH key:', error)
-    return interaction.followUp({ content: 'Error processing the SSH key. Ensure it is a valid key file and the ENCRYPTION_KEY is set correctly.', ephemeral: true })
-  }
+    let sshKeyContent
+    try {
+      console.log(`Fetching SSH key from: ${attachment.url}`)
+      const response = await fetch(attachment.url)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch key (${response.status}): ${response.statusText}`)
+      }
+      sshKeyContent = await response.text()
+      if (!sshKeyContent || sshKeyContent.trim() === '') {
+        throw new Error('Fetched key content is empty or whitespace.')
+      }
+      console.log('SSH key fetched successfully.')
+    } catch (error) {
+      console.error('Error fetching SSH key attachment:', error)
+      return interaction.followUp({ content: `Error fetching the SSH key file: ${error.message}. Please check the URL or try again.`, ephemeral: true })
+    }
 
-  try {
+    let encryptedKey
+    try {
+      encryptedKey = encrypt(sshKeyContent)
+      console.log('SSH key encrypted successfully.')
+    } catch (error) {
+      console.error('Error encrypting SSH key:', error)
+      return interaction.followUp({ content: 'Error processing the SSH key. Ensure it is a valid key file and the ENCRYPTION_KEY is set correctly.', ephemeral: true })
+    }
+
     // --- Coder User Assignment Logic --- START ---
-    // 1. Find currently used assignedUserIds (for any channel)
-    // Note: This is a global pool across all channels currently.
     const usedIdsResult = await Repository.distinct('assignedUserId')
     const usedIds = new Set(usedIdsResult.filter(id => id != null))
-
-    // 2. Find the first available ID from the pool
-    let assignedUserId = null
+    // assignedUserId is declared outside try block
     for (const userId of CODER_USER_POOL) {
       if (!usedIds.has(userId)) {
         assignedUserId = userId
         break
       }
     }
-
-    // 3. Handle pool exhaustion
     if (!assignedUserId) {
       console.warn('Maximum repository limit reached (coder pool exhausted).')
       return interaction.followUp({ content: 'Maximum repository limit reached. Cannot add more repositories.', ephemeral: true })
@@ -183,49 +196,145 @@ async function handleAddRepoCommand (interaction) {
     console.log(`Assigning coder user ID: ${assignedUserId} to channel ${channelId}`)
     // --- Coder User Assignment Logic --- END ---
 
-    // Use updateOne with upsert:true to handle both create and update
-    const result = await Repository.updateOne(
-      { discordChannelId: channelId },
+    // === INSERT / MODIFY CORE LOGIC HERE ===
+    // --- Create Repo Directory ---
+    repoDirName = `${guildId}-${channelId}` // Use guildId-channelId for uniqueness
+    repoPath = path.join(config.repoBaseDir, repoDirName)
+    await fs.mkdir(repoPath, { recursive: true })
+    console.log(`Created directory: ${repoPath}`)
+
+    // --- Set Directory Ownership ---
+    console.log(`Changing ownership of ${repoPath} to ${assignedUserId}`)
+    // Ensure sudo and chown are available in the Docker container
+    // *** Use 'coders' group as per previous tutorials/context if applicable ***
+    // *** Assuming 'coders' group exists and user is part of it ***
+    execFileSync('sudo', ['chown', `${assignedUserId}:coders`, repoPath]) // <<< Adjusted group if needed
+    console.log('Ownership changed successfully.')
+
+    // --- Prepare SSH Key and Environment ---
+    const decryptedKey = decrypt(encryptedKey) // Use the encrypted key from above
+    if (!decryptedKey) {
+      throw new Error('Failed to decrypt SSH key.')
+    }
+    // Use assignedUserId and repoDirName for temp key scoping
+    keyFilePath = await writeTempKey({ repoName: repoDirName, keyContent: decryptedKey, ownerUserId: assignedUserId })
+    console.log(`Temporary SSH key written to: ${keyFilePath}`)
+    const gitSshCommand = `ssh -i ${keyFilePath} -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no`
+    const spawnEnv = {
+      ...process.env,
+      GIT_SSH_COMMAND: gitSshCommand
+    }
+
+    // --- Save/Update Repository Document in DB ---
+    const dbResult = await Repository.updateOne(
+      { discordChannelId: interaction.channelId },
       {
         $set: {
           repoUrl,
-          encryptedSshKey: encryptedKey, // Store the encrypted key
-          assignedUserId // <-- Store the assigned user ID
+          encryptedSshKey: encryptedKey, // Store the *encrypted* key
+          assignedUserId // Store the assigned user ID
         },
-        $setOnInsert: { discordChannelId: channelId } // Set channelId only on insert
+        $setOnInsert: { discordChannelId: interaction.channelId } // Set channelId only on insert
       },
       { upsert: true, runValidators: true } // Create if not exists, validate
     )
+    repoSaved = dbResult.acknowledged // Or check modifiedCount/upsertedId
 
-    let confirmationMessage = ''
-    const assignedMsg = `Assigned User ID: ${assignedUserId}.`
-    if (result.upsertedId) {
-      confirmationMessage = `Repository configured: ${repoUrl}. SSH key uploaded and secured. ${assignedMsg}`
-      console.log(`Repository inserted for channel ${channelId}, assigned ${assignedUserId}`)
-    } else if (result.modifiedCount > 0) {
-      const previousDoc = await Repository.findOne({ discordChannelId: channelId }).select('assignedUserId').lean()
-      if (previousDoc && previousDoc.assignedUserId !== assignedUserId) {
-        confirmationMessage = `Repository configuration updated: ${repoUrl}. New SSH key uploaded. ${assignedMsg}`
-        console.log(`Repository updated for channel ${channelId}, assigned/updated to ${assignedUserId}`)
-      } else {
-        confirmationMessage = `Repository configuration updated: ${repoUrl}. SSH key re-uploaded. ${assignedMsg}`
-        console.log(`Repository updated for channel ${channelId} (key updated, user ${assignedUserId} same or already set)`)
-      }
+    console.log(`Repository document saved/updated for channel ${interaction.channelId}. Upserted: ${!!dbResult.upsertedId}, Modified: ${dbResult.modifiedCount}`)
+
+    // --- Execute Git Clone ---
+    console.log(`Attempting to clone ${repoUrl} into ${repoPath} as user ${assignedUserId}`)
+    const cloneProcess = spawn('sudo', ['-u', assignedUserId, 'git', 'clone', repoUrl, '.'], {
+      cwd: repoPath, // Set the working directory for the clone command
+      env: spawnEnv, // Pass the environment with GIT_SSH_COMMAND
+      stdio: ['ignore', 'pipe', 'pipe'] // Ignore stdin, pipe stdout/stderr
+    })
+
+    let cloneStdout = ''
+    let cloneStderr = ''
+    cloneProcess.stdout.on('data', (data) => { cloneStdout += data.toString(); console.log(`Clone stdout: ${data}`) })
+    cloneProcess.stderr.on('data', (data) => { cloneStderr += data.toString(); console.error(`Clone stderr: ${data}`) })
+
+    const cloneExitCode = await new Promise((resolve, reject) => {
+      cloneProcess.on('close', resolve)
+      cloneProcess.on('error', (err) => {
+        console.error('Spawn error during git clone:', err)
+        reject(err)
+      })
+    })
+
+    console.log(`Git clone process exited with code ${cloneExitCode}`)
+
+    if (cloneExitCode !== 0) {
+      // --- Clone Failed ---
+      console.error(`Git clone failed with code ${cloneExitCode}. Stderr: ${cloneStderr}`)
+      // Throw an error to trigger the catch block for cleanup
+      // <<< Modified error message formatting
+      throw new Error(`Failed to clone repository. Exit code: ${cloneExitCode}. Stderr: ${cloneStderr.substring(0, 500)}...`)
     } else {
-      confirmationMessage = `Repository configuration unchanged (already set to ${repoUrl}). SSH key re-uploaded. ${assignedMsg}`
-      console.log(`Repository unchanged for channel ${channelId} (user ${assignedUserId})`)
+      // --- Clone Succeeded ---
+      console.log(`Repository cloned successfully into ${repoPath}. Stdout: ${cloneStdout}`)
+      // Update reply on success
+      await interaction.followUp( // Use followUp since we deferred
+        // <<< Adjusted success message to match tutorial example more closely
+        `✅ Repository '${repoUrl}' configured, cloned successfully, and assigned User ID: ${assignedUserId}.`
+      )
+    }
+    // === END OF INSERTED/MODIFIED CORE LOGIC ===
+  } catch (error) {
+    console.error(`Error in /add-repo for channel ${interaction.channelId}:`, error)
+
+    // --- Error Handling and Cleanup ---
+    // <<< Modified error message generation
+    const errorMessage = error.message.includes('Failed to clone repository') || error.message.includes('Failed to decrypt SSH key') || error.message.includes('Spawn error during git clone') || error.message.includes('Error preparing SSH key')
+      ? `❌ ${error.message}`
+      : `❌ An unexpected error occurred while processing /add-repo: ${error.message}`
+
+    try {
+      // Ensure we don't exceed Discord limits
+      await interaction.followUp({ content: errorMessage.substring(0, 1900), ephemeral: true })
+    } catch (replyError) {
+      console.error('Failed to send error reply:', replyError)
     }
 
-    await interaction.followUp({ content: confirmationMessage, ephemeral: true })
-  } catch (error) {
-    console.error(`Database error saving repository for channel ${channelId}:`, error)
-    let userErrorMessage = 'An error occurred while saving the repository configuration.'
-    if (error instanceof mongoose.Error.ValidationError) {
-      userErrorMessage = `Validation Error: ${Object.values(error.errors).map(e => e.message).join(', ')}`
-    } else if (error.code === 11000) {
-      userErrorMessage = 'A unique constraint was violated (maybe this channel already has a repo?).'
+    // Cleanup: Remove directory ONLY if the clone itself failed
+    // <<< Modified check to only remove dir on clone failure >>>
+    if (repoPath && error.message.includes('Failed to clone repository')) {
+      console.log(`Cleaning up failed clone directory: ${repoPath}`)
+      try {
+        // Use simple rm, assuming container/bot has permission in REPO_BASE_DIR
+        await fs.rm(repoPath, { recursive: true, force: true })
+        console.log(`Cleaned up directory: ${repoPath}`)
+      } catch (cleanupErr) {
+        console.error(`Failed to clean up directory ${repoPath}:`, cleanupErr)
+      }
+    } else if (repoPath) {
+      // Log that we are *not* cleaning up for other errors
+      console.log(`Error occurred before/during clone setup (${error.message}), not cleaning up directory: ${repoPath}`)
     }
-    await interaction.followUp({ content: userErrorMessage, ephemeral: true })
+
+    // Cleanup: Potentially revert DB changes? (Logging inconsistency as per tutorial)
+    if (repoSaved) {
+      console.warn(`Operation failed for channel ${interaction.channelId} after DB record was potentially saved/updated. Manual review might be needed if cleanup fails.`)
+      // Optional: Add logic here to delete document if dbResult.upsertedId exists
+    }
+    // --- End Error Handling ---
+  } finally {
+    // --- Final Cleanup ---
+    // Always try to delete the temporary SSH key if its path was set
+    if (keyFilePath && assignedUserId) {
+      console.log(`Finally block: Cleaning up temporary SSH key for user ${assignedUserId}...`)
+      try {
+        // Need repoDirName from try block
+        // Ensure repoDirName is available if repoPath wasn't set (e.g., error before dir creation)
+        const dirNameForCleanup = repoDirName || (repoPath ? path.basename(repoPath) : `unknown-${Date.now()}`)
+        await deleteTempKey({ repoName: dirNameForCleanup, ownerUserId: assignedUserId }) // Use assignedUserId
+        console.log(`Successfully deleted temporary key file: ${keyFilePath}`)
+      } catch (cleanupError) {
+        console.error(`Error cleaning up temporary SSH key ${keyFilePath}:`, cleanupError)
+      }
+    }
+    // --- End Final Cleanup ---
   }
 }
 

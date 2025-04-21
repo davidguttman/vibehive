@@ -9,7 +9,8 @@
   "scripts": {
     "lint": "standard --fix",
     "start": "node index.js",
-    "test": "tape test/**/*.test.js"
+    "test": "[ -z \"$RUNNING_IN_DOCKER\" ] && echo \"ERROR: Tests must be run inside Docker. Use 'npm run test:docker' or ensure RUNNING_IN_DOCKER is set.\" && exit 1 || wtfnode node_modules/.bin/ava",
+    "test:docker": "docker build -t vibehive-test . && docker run --rm -e NODE_ENV=test -e RUNNING_IN_DOCKER=true vibehive-test npm test"
   },
   "keywords": [],
   "author": "David Guttman <david@davidguttman.com> (http://davidguttman.com/)",
@@ -21,15 +22,21 @@
     "mongoose": "^8.13.2"
   },
   "devDependencies": {
+    "ava": "^6.2.0",
     "mongodb-memory-server": "^10.1.4",
     "proxyquire": "^2.1.3",
     "sinon": "^20.0.0",
     "standard": "^17.1.2",
-    "tape": "^5.9.0"
+    "wtfnode": "^0.10.0"
   },
   "config": {
     "mongodbMemoryServer": {
       "version": "4.4.29"
     }
+  },
+  "ava": {
+    "require": [
+      "./_force-exit.mjs"
+    ]
   }
 }

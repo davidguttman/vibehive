@@ -1,4 +1,4 @@
-const test = require('tape')
+const test = require('ava')
 const proxyquire = require('proxyquire')
 const sinon = require('sinon')
 const path = require('node:path')
@@ -38,7 +38,7 @@ let invokeAiderWrapper
 let REPOS_BASE_DIR
 
 // --- Test Setup --- START ---
-test('Setup PythonWrapper Tests', async (t) => {
+test.before('Setup PythonWrapper Tests', async (t) => {
   try {
     // Ensure stubs are clean before setup
     spawnStub.reset()
@@ -67,7 +67,6 @@ test('Setup PythonWrapper Tests', async (t) => {
     t.fail(`Setup failed: ${err}`)
     process.exit(1)
   }
-  t.end()
 })
 // --- Test Setup --- END ---
 
@@ -94,7 +93,7 @@ function simulateProcessError (instance, error, { delay = 5 } = {}) {
 
 // --- Test Cases --- START ---
 
-test('invokeAiderWrapper - Missing required parameters', async (t) => {
+test.serial('invokeAiderWrapper - Missing required parameters', async (t) => {
   // Test without assignedUserId
   const mockConfigNoUserId = {
     repoName: 'test-repo',
@@ -107,8 +106,8 @@ test('invokeAiderWrapper - Missing required parameters', async (t) => {
     repoConfig: mockConfigNoUserId
   })
 
-  t.equal(result1.overall_status, 'failure', 'Should fail with missing assignedUserId')
-  t.ok(result1.error.includes('Missing required'), 'Error should mention missing parameters')
+  t.is(result1.overall_status, 'failure', 'Should fail with missing assignedUserId')
+  t.truthy(result1.error.includes('Missing required'), 'Error should mention missing parameters')
 
   // Test without encryptedSshKey
   const mockConfigNoKey = {
@@ -122,13 +121,11 @@ test('invokeAiderWrapper - Missing required parameters', async (t) => {
     repoConfig: mockConfigNoKey
   })
 
-  t.equal(result2.overall_status, 'failure', 'Should fail with missing encryptedSshKey')
-  t.ok(result2.error.includes('Missing required'), 'Error should mention missing parameters')
-
-  t.end()
+  t.is(result2.overall_status, 'failure', 'Should fail with missing encryptedSshKey')
+  t.truthy(result2.error.includes('Missing required'), 'Error should mention missing parameters')
 })
 
-test('invokeAiderWrapper - SSH Key Success Path with sudo', async (t) => {
+test.serial('invokeAiderWrapper - SSH Key Success Path with sudo', async (t) => {
   // Reset all stubs
   spawnStub.reset()
   decryptStub.reset()
@@ -171,36 +168,36 @@ test('invokeAiderWrapper - SSH Key Success Path with sudo', async (t) => {
   const result = await promise
 
   // Verify decryption and key handling
-  t.ok(decryptStub.calledOnceWith('encrypted-key-data'), 'Should decrypt the key')
-  t.ok(writeTempKeyStub.calledOnce, 'Should write the key to a temp file')
+  t.truthy(decryptStub.calledOnceWith('encrypted-key-data'), 'Should decrypt the key')
+  t.truthy(writeTempKeyStub.calledOnce, 'Should write the key to a temp file')
 
   // Verify writeTempKey gets ownerUserId parameter
   const writeTempKeyArgs = writeTempKeyStub.firstCall.args[0]
-  t.equal(writeTempKeyArgs.repoName, FAKE_REPO_ID, 'Should pass correct repoName')
-  t.equal(writeTempKeyArgs.keyContent, FAKE_DECRYPTED_KEY, 'Should pass decrypted key content')
-  t.equal(writeTempKeyArgs.ownerUserId, FAKE_ASSIGNED_USER_ID, 'Should pass assignedUserId as ownerUserId')
+  t.is(writeTempKeyArgs.repoName, FAKE_REPO_ID, 'Should pass correct repoName')
+  t.is(writeTempKeyArgs.keyContent, FAKE_DECRYPTED_KEY, 'Should pass decrypted key content')
+  t.is(writeTempKeyArgs.ownerUserId, FAKE_ASSIGNED_USER_ID, 'Should pass assignedUserId as ownerUserId')
 
   // Verify spawn call with sudo
-  t.ok(spawnStub.calledOnce, 'Should spawn a process')
+  t.truthy(spawnStub.calledOnce, 'Should spawn a process')
   const spawnArgs = spawnStub.firstCall.args
 
   // First argument should be sudo
-  t.equal(spawnArgs[0], 'sudo', 'Should use sudo as the command')
+  t.is(spawnArgs[0], 'sudo', 'Should use sudo as the command')
 
   // Second argument should be an array starting with -u FAKE_ASSIGNED_USER_ID
-  t.ok(Array.isArray(spawnArgs[1]), 'Second argument should be an array')
-  t.equal(spawnArgs[1][0], '-u', 'First sudo argument should be -u')
-  t.equal(spawnArgs[1][1], FAKE_ASSIGNED_USER_ID, 'Second sudo argument should be the assignedUserId')
+  t.true(Array.isArray(spawnArgs[1]), 'Second argument should be an array')
+  t.is(spawnArgs[1][0], '-u', 'First sudo argument should be -u')
+  t.is(spawnArgs[1][1], FAKE_ASSIGNED_USER_ID, 'Second sudo argument should be the assignedUserId')
 
   // python3 and script path should follow
-  t.ok(spawnArgs[1].includes('python3'), 'Should include python3 command')
-  t.ok(spawnArgs[1].some(arg => arg.endsWith('aider_wrapper.py')), 'Should include script path')
+  t.truthy(spawnArgs[1].includes('python3'), 'Should include python3 command')
+  t.truthy(spawnArgs[1].some(arg => arg.endsWith('aider_wrapper.py')), 'Should include script path')
 
   // Verify spawn options
   const spawnOptions = spawnArgs[2]
-  t.ok(spawnOptions, 'Should provide spawn options')
-  t.ok(spawnOptions.env, 'Should provide environment variables')
-  t.equal(
+  t.truthy(spawnOptions, 'Should provide spawn options')
+  t.truthy(spawnOptions.env, 'Should provide environment variables')
+  t.is(
     spawnOptions.env.GIT_SSH_COMMAND,
     `ssh -i "${FAKE_TEMP_KEY_PATH}" -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no`,
     'Should set GIT_SSH_COMMAND correctly'
@@ -208,22 +205,20 @@ test('invokeAiderWrapper - SSH Key Success Path with sudo', async (t) => {
 
   // Most important: verify cwd is set correctly
   const expectedRepoPath = path.join(REPOS_BASE_DIR, FAKE_REPO_ID)
-  t.equal(spawnOptions.cwd, expectedRepoPath, 'Should set cwd to the repo path')
+  t.is(spawnOptions.cwd, expectedRepoPath, 'Should set cwd to the repo path')
 
   // Verify key cleanup
-  t.ok(deleteTempKeyStub.calledOnce, 'Should clean up the key file')
+  t.truthy(deleteTempKeyStub.calledOnce, 'Should clean up the key file')
   const deleteTempKeyArgs = deleteTempKeyStub.firstCall.args[0]
-  t.equal(deleteTempKeyArgs.repoName, FAKE_REPO_ID, 'Should clean up the correct key')
-  t.equal(deleteTempKeyArgs.ownerUserId, FAKE_ASSIGNED_USER_ID, 'Should pass ownerUserId to deleteTempKey')
+  t.is(deleteTempKeyArgs.repoName, FAKE_REPO_ID, 'Should clean up the correct key')
+  t.is(deleteTempKeyArgs.ownerUserId, FAKE_ASSIGNED_USER_ID, 'Should pass ownerUserId to deleteTempKey')
 
   // Verify result
-  t.equal(result.overall_status, 'success', 'Should return success status')
+  t.is(result.overall_status, 'success', 'Should return success status')
   t.deepEqual(result.events, expectedJson.events, 'Should return the parsed events')
-
-  t.end()
 })
 
-test('invokeAiderWrapper - SSH Key with Context Files', async (t) => {
+test.serial('invokeAiderWrapper - SSH Key with Context Files', async (t) => {
   // Reset stubs
   spawnStub.reset()
   decryptStub.reset()
@@ -264,21 +259,19 @@ test('invokeAiderWrapper - SSH Key with Context Files', async (t) => {
   await promise
 
   // Verify context files are passed correctly
-  t.ok(spawnStub.calledOnce, 'Should spawn a process')
+  t.truthy(spawnStub.calledOnce, 'Should spawn a process')
   const spawnArgs = spawnStub.firstCall.args[1] // Command arguments array
 
   // Check all context files are included in arguments
   contextFiles.forEach(file => {
-    t.ok(spawnArgs.includes(file), `Should include context file ${file} in arguments`)
+    t.truthy(spawnArgs.includes(file), `Should include context file ${file} in arguments`)
   })
 
   // Verify --context-file argument is used
-  t.ok(spawnArgs.includes('--context-file'), 'Should include --context-file argument')
-
-  t.end()
+  t.truthy(spawnArgs.includes('--context-file'), 'Should include --context-file argument')
 })
 
-test('invokeAiderWrapper - SSH Key Error Handling and Cleanup', async (t) => {
+test.serial('invokeAiderWrapper - SSH Key Error Handling and Cleanup', async (t) => {
   // Reset stubs
   spawnStub.reset()
   decryptStub.reset()
@@ -316,22 +309,20 @@ test('invokeAiderWrapper - SSH Key Error Handling and Cleanup', async (t) => {
   const result = await promise
 
   // Verify result indicates failure
-  t.equal(result.overall_status, 'failure', 'Should report failure')
-  t.ok(result.error.includes('Sudo execution failed'), 'Should include error message')
+  t.is(result.overall_status, 'failure', 'Should report failure')
+  t.truthy(result.error.includes('Sudo execution failed'), 'Should include error message')
 
   // Verify key is cleaned up even on error
-  t.ok(deleteTempKeyStub.called, 'Should attempt to clean up the key file even after error')
+  t.truthy(deleteTempKeyStub.called, 'Should attempt to clean up the key file even after error')
   const deleteTempKeyArgs = deleteTempKeyStub.firstCall.args[0]
-  t.equal(deleteTempKeyArgs.repoName, FAKE_REPO_ID, 'Should clean up the correct key')
-  t.equal(deleteTempKeyArgs.ownerUserId, FAKE_ASSIGNED_USER_ID, 'Should pass ownerUserId to deleteTempKey')
-
-  t.end()
+  t.is(deleteTempKeyArgs.repoName, FAKE_REPO_ID, 'Should clean up the correct key')
+  t.is(deleteTempKeyArgs.ownerUserId, FAKE_ASSIGNED_USER_ID, 'Should pass ownerUserId to deleteTempKey')
 })
 
 // --- Test Cases --- END ---
 
 // --- Test Teardown --- START ---
-test('Teardown PythonWrapper Tests', async (t) => {
+test.after.always('Teardown PythonWrapper Tests', async (t) => {
   try {
     // Ensure stubs are reset
     spawnStub.reset()
@@ -350,8 +341,7 @@ test('Teardown PythonWrapper Tests', async (t) => {
     delete process.env.REPO_BASE_DIR
     delete process.env.ENCRYPTION_KEY
   } catch (err) {
-    t.comment(`Warning: Failed to clean up: ${err.message}`)
+    t.log(`Warning: Failed to clean up: ${err.message}`)
   }
-  t.end()
 })
 // --- Test Teardown --- END ---

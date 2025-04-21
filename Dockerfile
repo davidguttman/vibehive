@@ -28,6 +28,7 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Run tests - This will fail the build if tests don't pass
+ENV RUNNING_IN_DOCKER=true
 RUN npm test
 
 # ---- Stage 2: Production ----
@@ -66,7 +67,12 @@ RUN echo "# Allow appuser to run specific commands as coderX users" > /etc/sudoe
     echo "appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /bin/chown *" >> /etc/sudoers.d/appuser-privs && \
     echo "appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /bin/chmod *" >> /etc/sudoers.d/appuser-privs && \
     echo "appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /bin/ls *" >> /etc/sudoers.d/appuser-privs && \
-    echo "appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /usr/bin/tree *" >> /etc/sudoers.d/appuser-privs
+    echo "appuser ALL=(coder1,coder2,coder3,coder4,coder5) NOPASSWD: /usr/bin/tree *" >> /etc/sudoers.d/appuser-privs && \
+    echo "" >> /etc/sudoers.d/appuser-privs && \
+    echo "# Allow appuser to run specific commands directly (as root) for repo setup/cleanup" >> /etc/sudoers.d/appuser-privs && \
+    echo "appuser ALL=(ALL) NOPASSWD: /bin/chown *" >> /etc/sudoers.d/appuser-privs && \
+    echo "appuser ALL=(ALL) NOPASSWD: /bin/rm *" >> /etc/sudoers.d/appuser-privs
+
 RUN chmod 0440 /etc/sudoers.d/appuser-privs
 # --- Sudo Configuration --- END ---
 

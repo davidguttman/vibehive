@@ -1,4 +1,4 @@
-const test = require('tape')
+const test = require('ava')
 const { MongoMemoryServer } = require('mongodb-memory-server')
 const mongoose = require('mongoose')
 const Repository = require('../models/Repository') // Adjust path as needed
@@ -19,8 +19,8 @@ const createMockInteraction = (commandName, options = {}, discordChannelId = 'te
     getString: (key) => options[key]
     // Add other option types if needed (getBoolean, getInteger, etc.)
   },
-  reply: test.Test.prototype.comment, // Use tape's comment for mock replies
-  followUp: test.Test.prototype.comment, // Use tape's comment for mock followUps
+  reply: () => {}, // Replace Tape's comment with a no-op function
+  followUp: () => {}, // Replace Tape's comment with a no-op function
   isChatInputCommand: () => true,
   replied: false,
   deferred: false,
@@ -31,7 +31,7 @@ const createMockInteraction = (commandName, options = {}, discordChannelId = 'te
 })
 
 // Test setup: start in-memory MongoDB and connect mongoose
-test.onFinish(async () => {
+test.after.always(async (t) => {
   // Disconnect Mongoose *after* all tests run
   // This allows subsequent test files (like db.test.js) to manage their own connections
   // without this file interfering by disconnecting too early.
@@ -39,10 +39,11 @@ test.onFinish(async () => {
   await mongoose.disconnect().catch(err => console.error('Error during final disconnect:', err))
   if (mongoServer) {
     await mongoServer.stop()
+    t.log('In-memory MongoDB server stopped.') // Use t.log for info
   }
 })
 
-test('Setup In-Memory MongoDB and Discord Client', async (t) => {
+test.serial('Setup In-Memory MongoDB and Discord Client', async (t) => {
   // Start Mongo
   mongoServer = await MongoMemoryServer.create()
   // const mongoUri = mongoServer.getUri() // Removed unused variable
@@ -60,8 +61,6 @@ test('Setup In-Memory MongoDB and Discord Client', async (t) => {
   } else {
     t.fail('Could not load interactionCreate handler')
   }
-
-  t.end()
 })
 
 // Helper to run command via event emission
@@ -69,11 +68,13 @@ async function runCommand (t, interaction) {
   return new Promise((resolve) => {
     // Override reply/followUp to signal test completion
     interaction.reply = (options) => {
-      t.comment(`Interaction replied: ${JSON.stringify(options)}`)
+      // t.comment(`Interaction replied: ${JSON.stringify(options)}`) // Use t.log instead
+      t.log(`Interaction replied: ${JSON.stringify(options)}`)
       resolve(options) // Resolve with reply content for assertions
     }
     interaction.followUp = (options) => {
-      t.comment(`Interaction followed up: ${JSON.stringify(options)}`)
+      // t.comment(`Interaction followed up: ${JSON.stringify(options)}`) // Use t.log instead
+      t.log(`Interaction followed up: ${JSON.stringify(options)}`)
       resolve(options) // Resolve with followUp content
     }
 
@@ -81,7 +82,7 @@ async function runCommand (t, interaction) {
   })
 }
 
-test('Context Commands: Setup Data', async (t) => {
+test.serial('Context Commands: Setup Data', async (t) => {
   try {
     // Ensure DB connection using the specific server for this test file
     const mongoUri = mongoServer.getUri() // Get URI from this file's server
@@ -111,124 +112,114 @@ test('Context Commands: Setup Data', async (t) => {
     t.pass('Inserted initial repository data')
   } catch (err) {
     console.error('DEBUG: Error during setup data:', err) // Debug log
-    t.fail('Failed to setup initial data', err)
+    t.fail(`Failed to setup initial data: ${err}`) // Pass error message to fail
   }
-  t.end()
 })
 
-test('Context Commands: /files', async (t) => {
+test.serial('Context Commands: /files', async (t) => {
   const discordChannelId = 'files-channel-1'
   const interaction = createMockInteraction('files', {}, discordChannelId)
 
   const replyOptions = await runCommand(t, interaction)
 
-  t.ok(replyOptions.ephemeral, 'Reply should be ephemeral')
-  t.match(replyOptions.content, /Files in context:/, 'Reply contains header')
-  t.match(replyOptions.content, /`file1.js`/, 'Reply contains file1.js')
-  t.match(replyOptions.content, /`src\/file2.ts`/, 'Reply contains src/file2.ts')
-  t.end()
+  t.truthy(replyOptions.ephemeral, 'Reply should be ephemeral')
+  t.regex(replyOptions.content, /Files in context:/, 'Reply contains header')
+  t.regex(replyOptions.content, /`file1.js`/, 'Reply contains file1.js')
+  t.regex(replyOptions.content, /`src\/file2.ts`/, 'Reply contains src/file2.ts')
 })
 
-test('Context Commands: /files (no files)', async (t) => {
+test.serial('Context Commands: /files (no files)', async (t) => {
   const discordChannelId = 'files-channel-2'
   const interaction = createMockInteraction('files', {}, discordChannelId)
   const replyOptions = await runCommand(t, interaction)
 
-  t.ok(replyOptions.ephemeral, 'Reply should be ephemeral')
-  t.equal(replyOptions.content, 'No files currently in context.', 'Reply indicates no files')
-  t.end()
+  t.truthy(replyOptions.ephemeral, 'Reply should be ephemeral')
+  t.is(replyOptions.content, 'No files currently in context.', 'Reply indicates no files')
 })
 
-test('Context Commands: /files (no repo)', async (t) => {
+test.serial('Context Commands: /files (no repo)', async (t) => {
   const discordChannelId = 'files-channel-3' // This channel had no data inserted
   const interaction = createMockInteraction('files', {}, discordChannelId)
   const replyOptions = await runCommand(t, interaction)
 
-  t.ok(replyOptions.ephemeral, 'Reply should be ephemeral')
-  t.equal(replyOptions.content, 'No repository configured for this channel.', 'Reply indicates no repo')
-  t.end()
+  t.truthy(replyOptions.ephemeral, 'Reply should be ephemeral')
+  t.is(replyOptions.content, 'No repository configured for this channel.', 'Reply indicates no repo')
 })
 
-test('Context Commands: /add', async (t) => {
+test.serial('Context Commands: /add', async (t) => {
   const discordChannelId = 'add-channel-1'
   const interaction = createMockInteraction('add', { paths: 'new/file.js another.txt existing.txt ' }, discordChannelId)
   const replyOptions = await runCommand(t, interaction)
 
-  t.ok(replyOptions.ephemeral, 'Reply should be ephemeral')
-  t.match(replyOptions.content, /Attempted to add files: `new\/file.js`, `another.txt`, `existing.txt`/, 'Reply confirms added files')
+  t.truthy(replyOptions.ephemeral, 'Reply should be ephemeral')
+  t.regex(replyOptions.content, /Attempted to add files: `new\/file.js`, `another.txt`, `existing.txt`/, 'Reply confirms added files')
 
   // Verify database
   const repo = await Repository.findOne({ discordChannelId })
-  t.ok(repo, 'Repo should exist')
+  t.truthy(repo, 'Repo should exist')
   t.deepEqual(repo.contextFiles.sort(), ['another.txt', 'existing.txt', 'new/file.js'].sort(), 'Database contains correct files (including existing, ignoring duplicate add)')
-  t.end()
 })
 
-test('Context Commands: /add (invalid paths)', async (t) => {
+test.serial('Context Commands: /add (invalid paths)', async (t) => {
   const discordChannelId = 'add-channel-2'
   const interaction = createMockInteraction('add', { paths: 'valid.js /etc/passwd ../../secrets.txt another/valid.ts ' }, discordChannelId)
   const replyOptions = await runCommand(t, interaction)
 
-  t.ok(replyOptions.ephemeral, 'Reply should be ephemeral')
-  t.match(replyOptions.content, /Error: Invalid paths detected: `\/etc\/passwd`, `..\/..\/secrets.txt`/, 'Reply indicates invalid paths')
+  t.truthy(replyOptions.ephemeral, 'Reply should be ephemeral')
+  t.regex(replyOptions.content, /Error: Invalid paths detected: `\/etc\/passwd`, `..\/..\/secrets.txt`/, 'Reply indicates invalid paths')
 
   // Verify database (should not have changed)
   const repo = await Repository.findOne({ discordChannelId })
-  t.ok(repo, 'Repo should exist')
+  t.truthy(repo, 'Repo should exist')
   t.deepEqual(repo.contextFiles, [], 'Database should remain unchanged after invalid add attempt')
-  t.end()
 })
 
-test('Context Commands: /add (no repo)', async (t) => {
+test.serial('Context Commands: /add (no repo)', async (t) => {
   const discordChannelId = 'add-channel-3'
   const interaction = createMockInteraction('add', { paths: 'a/file.js' }, discordChannelId)
   const replyOptions = await runCommand(t, interaction)
 
-  t.ok(replyOptions.ephemeral, 'Reply should be ephemeral')
-  t.equal(replyOptions.content, 'No repository configured for this channel.', 'Reply indicates no repo')
-  t.end()
+  t.truthy(replyOptions.ephemeral, 'Reply should be ephemeral')
+  t.is(replyOptions.content, 'No repository configured for this channel.', 'Reply indicates no repo')
 })
 
-test('Context Commands: /drop', async (t) => {
+test.serial('Context Commands: /drop', async (t) => {
   const discordChannelId = 'drop-channel-1'
   const interaction = createMockInteraction('drop', { paths: 'remove.txt not_present.py another/to_remove.css ' }, discordChannelId)
   const replyOptions = await runCommand(t, interaction)
 
-  t.ok(replyOptions.ephemeral, 'Reply should be ephemeral')
-  t.match(replyOptions.content, /Removed files: `remove.txt`, `not_present.py`, `another\/to_remove.css`/, 'Reply confirms removed files (even if not present)')
+  t.truthy(replyOptions.ephemeral, 'Reply should be ephemeral')
+  t.regex(replyOptions.content, /Removed files: `remove.txt`, `not_present.py`, `another\/to_remove.css`/, 'Reply confirms removed files (even if not present)')
 
   // Verify database
   const repo = await Repository.findOne({ discordChannelId })
-  t.ok(repo, 'Repo should exist')
+  t.truthy(repo, 'Repo should exist')
   t.deepEqual(repo.contextFiles, ['keep.js'], 'Database contains only the remaining file')
-  t.end()
 })
 
-test('Context Commands: /drop (no files match)', async (t) => {
+test.serial('Context Commands: /drop (no files match)', async (t) => {
   const discordChannelId = 'drop-channel-2'
   const interaction = createMockInteraction('drop', { paths: 'nonexistent.txt another.css' }, discordChannelId)
   const replyOptions = await runCommand(t, interaction)
 
-  t.ok(replyOptions.ephemeral, 'Reply should be ephemeral')
-  t.match(replyOptions.content, /None of the specified files \(`nonexistent.txt`, `another.css`\) were found/, 'Reply indicates no files were found to remove')
+  t.truthy(replyOptions.ephemeral, 'Reply should be ephemeral')
+  t.regex(replyOptions.content, /None of the specified files \(`nonexistent.txt`, `another.css`\) were found/, 'Reply indicates no files were found to remove')
 
   // Verify database (should not have changed)
   const repo = await Repository.findOne({ discordChannelId })
-  t.ok(repo, 'Repo should exist')
+  t.truthy(repo, 'Repo should exist')
   t.deepEqual(repo.contextFiles.sort(), ['file1.js', 'file2.js'].sort(), 'Database should remain unchanged')
-  t.end()
 })
 
-test('Context Commands: /drop (no repo)', async (t) => {
+test.serial('Context Commands: /drop (no repo)', async (t) => {
   const discordChannelId = 'drop-channel-3'
   const interaction = createMockInteraction('drop', { paths: 'a/file.js' }, discordChannelId)
   const replyOptions = await runCommand(t, interaction)
 
-  t.ok(replyOptions.ephemeral, 'Reply should be ephemeral')
-  t.equal(replyOptions.content, 'No repository configured for this channel.', 'Reply indicates no repo')
-  t.end()
+  t.truthy(replyOptions.ephemeral, 'Reply should be ephemeral')
+  t.is(replyOptions.content, 'No repository configured for this channel.', 'Reply indicates no repo')
 })
 
 // Cleanup: Ensure mongoose connection is closed after all tests
-// Note: tape doesn't have a global afterAll hook like jest.
-// The test.onFinish handler covers this, but be mindful if tests run in parallel extensively.
+// Note: Ava's test.after.always hook replaces tape's test.onFinish
+// The test.after.always handler covers this.

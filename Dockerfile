@@ -62,6 +62,7 @@ COPY . .
 # Set ownership and switch user (BEFORE CMD)
 RUN chown -R appuser:appuser /app
 USER appuser
+RUN npm config set update-notifier false
 
 # Define the command to run the application (for production)
 CMD ["node", "index.js"] 

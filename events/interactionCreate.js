@@ -6,6 +6,8 @@ const Repository = require('../models/Repository') // Adjust path as needed
 const { encrypt, decrypt } = require('../lib/crypto') // Import encrypt and decrypt
 const { writeTempKey, deleteTempKey } = require('../lib/secureKeys') // <<< Added
 const config = require('../config') // <<< Added
+const { gitAddAll, gitCommit, gitPush } = require('../lib/gitHelper') // <<< Add this
+const { invokeAiderWrapper } = require('../lib/aider') // <<< Ensure this is imported
 
 // Define the pool of available coder users
 const CODER_USER_POOL = ['coder1', 'coder2', 'coder3', 'coder4', 'coder5']
@@ -336,6 +338,179 @@ async function handleAddRepoCommand (interaction) {
   }
 }
 
+async function handleMentionInteraction (interactionOrMessage) {
+  // Determine if it's an interaction or message
+  const isInteraction = !!interactionOrMessage.isChatInputCommand // Check if it has interaction properties
+  const message = isInteraction ? interactionOrMessage : interactionOrMessage // Use interaction or message object
+  const channelId = message.channelId
+  const guildId = message.guildId
+  // Extract prompt - handle both interaction options and message content
+  const userPrompt = isInteraction
+    ? message.options.getString('prompt')
+    // For message, remove bot mention and trim
+    : message.content.replace(/<@!?\\d+>/g, '').trim()
+
+  // Original reply/defer logic might be here...
+  // e.g., await message.reply('Processing your request...'); or interaction.deferReply()
+  // Let's assume a 'processingMessage' variable holds the message object we can edit later.
+  let processingMessage
+  try { // Wrap main logic for initial message sending
+    if (isInteraction) {
+      await message.deferReply()
+      // If deferring, followUp is used first time, then edit
+      processingMessage = await message.followUp('Processing your request with Aider...')
+    } else {
+      processingMessage = await message.reply('Processing your request with Aider...')
+    }
+  } catch (initialReplyError) {
+    console.error('Failed to send initial processing message:', initialReplyError)
+    // If we can't even send the first message, log and exit
+    return
+  }
+
+  try {
+    // --- 1. Find Repository Config & Context ---
+    const repoConfig = await Repository.findOne({ discordChannelId: channelId })
+    if (!repoConfig) {
+      return processingMessage.edit('Error: No repository is configured for this channel. Use `/addrepo` first.')
+    }
+    if (!repoConfig.assignedUserId) { // <<< Check assignedUserId early
+      return processingMessage.edit('Error: Repository configuration is incomplete (missing assigned user ID). Please re-add the repository.')
+    }
+
+    // --- 2. Invoke Aider Wrapper ---
+    console.log(`Invoking aider for channel ${channelId} with prompt: "${userPrompt}"`)
+    const wrapperResult = await invokeAiderWrapper({
+      repoConfig, // Pass the whole config
+      prompt: userPrompt,
+      guildId,
+      channelId
+      // contextFiles: repoConfig.contextFiles // Already in repoConfig
+    })
+
+    console.log('Aider Wrapper Result:', JSON.stringify(wrapperResult, null, 2)) // Log the raw result
+
+    // --- 3. Process Aider Result & Update User ---
+    let finalReply = 'Aider processing finished.' // Default message
+
+    if (wrapperResult.stdout) {
+      // Append stdout, ensuring it's not too long for Discord
+      const output = wrapperResult.stdout.substring(0, 1900) // Limit length
+      finalReply += `\n\n**Output:**\n\`\`\`\n${output}\n\`\`\``
+    }
+    if (wrapperResult.stderr) {
+      finalReply += `\n\n**Errors:**\n\`\`\`\n${wrapperResult.stderr.substring(0, 500)}\n\`\`\``
+    }
+    if (wrapperResult.error) {
+      // If the wrapper script itself threw an error
+      finalReply += `\n\n**Wrapper Error:** ${wrapperResult.error.message}`
+    }
+
+    // --- START: Auto Git Commit/Push Logic (from Tutorial 25) ---
+    // Ensure wrapperResult.data exists before accessing its properties
+    if (wrapperResult.data && wrapperResult.data.overall_status === 'success') {
+      const fileChangeEvents = wrapperResult.data.events?.filter(e => e.type === 'file_change') || [] // Use optional chaining and default to empty array
+
+      if (fileChangeEvents.length > 0) {
+        console.log(`Detected ${fileChangeEvents.length} file changes from Aider. Proceeding with Git operations.`)
+        finalReply += '\n\nAttempting to commit and push changes...' // Add feedback
+
+        let keyFilePath = null
+        let repoPath = null
+        let repoDirName = null
+        // Define branchName here for use in success/error messages
+        const branchName = `aider/channel-${channelId}`.replace(/[^a-zA-Z0-9_\-/]/g, '-')
+
+        try {
+          // 1. Retrieve necessary info (repoConfig already available)
+          // Added check for repoUrl earlier, check key here specifically
+          if (!repoConfig.encryptedSshKey) {
+            throw new Error('Missing repository configuration fields (encrypted SSH key) for Git operations.')
+          }
+
+          const assignedUserId = repoConfig.assignedUserId // Already checked this exists
+          repoDirName = `${guildId}-${channelId}` // Reconstruct repoDirName
+          repoPath = path.join(config.repoBaseDir, repoDirName) // Reconstruct repoPath
+
+          // 2. Prepare SSH environment
+          const decryptedKey = decrypt(repoConfig.encryptedSshKey)
+          if (!decryptedKey) {
+            throw new Error('Failed to decrypt SSH key for Git operation.')
+          }
+          // Ensure assignedUserId is passed correctly for scoping
+          keyFilePath = await writeTempKey({ repoName: repoDirName, keyContent: decryptedKey, ownerUserId: assignedUserId })
+          const gitSshCommand = `ssh -i ${keyFilePath} -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no`
+          const spawnEnv = {
+            ...process.env,
+            GIT_SSH_COMMAND: gitSshCommand
+          }
+
+          // 3. Define Commit Message
+          const originalPrompt = userPrompt // Use the already extracted prompt
+          const commitMessage = `FEAT: Aider changes based on prompt: "${originalPrompt.substring(0, 72)}"`
+
+          // 4. Execute Git Commands
+          await gitAddAll({ repoPath, assignedUserId, env: spawnEnv })
+          await gitCommit({ repoPath, assignedUserId, env: spawnEnv, message: commitMessage })
+          await gitPush({ repoPath, assignedUserId, env: spawnEnv, branchName })
+
+          // 5. Success Feedback (Append to finalReply)
+          console.log('Successfully pushed changes to branch: ' + branchName)
+          finalReply += '\n✅ Changes applied and pushed to branch `' + branchName + '`.'
+        } catch (gitError) {
+          console.error('Error during automatic Git operations:', gitError)
+          // Provide specific branch name in error message
+          finalReply += '\n❌ Changes applied locally, but failed to push to remote branch `' + branchName + '`:' + gitError.message
+        } finally {
+          // 6. Clean up temp SSH key
+          if (keyFilePath) {
+            // Ensure ownerUserId matches what was used in writeTempKey
+            // Need assignedUserId from repoConfig here
+            await deleteTempKey({ repoName: repoDirName, ownerUserId: repoConfig.assignedUserId })
+            console.log(`Cleaned up temporary SSH key: ${keyFilePath}`)
+          }
+        }
+      } else {
+        console.log('Aider run successful, but no file changes detected. Skipping Git operations.')
+        finalReply += '\n\nℹ️ Aider finished successfully, but no file changes were detected.'
+      }
+    } else if (wrapperResult.data && wrapperResult.data.overall_status === 'error') {
+      console.log('Aider run failed. Skipping Git operations.')
+      // Check if stderr already captured the error details
+      if (!wrapperResult.stderr) {
+        finalReply += '\n\n⚠️ Aider run reported errors. Check bot logs for details. No Git operations performed.'
+      } else {
+        finalReply += '\n\n⚠️ Aider run reported errors (see above). No Git operations performed.'
+      }
+    } else {
+      // Handle unexpected output format or missing data object
+      console.error('Unexpected or missing aider wrapper output data. Skipping Git operations.', wrapperResult.data)
+      finalReply += '\n\n⚠️ Could not determine Aider status or changes due to unexpected output format. No Git operations performed.'
+    }
+    // --- END: Auto Git Commit/Push Logic ---
+
+    // --- 4. Final Update to User ---
+    // Ensure finalReply fits within Discord's 2000 character limit
+    await processingMessage.edit(finalReply.substring(0, 2000))
+  } catch (error) {
+    console.error('Error handling mention interaction:', error)
+    // Use edit on processingMessage if available, otherwise reply/followUp
+    const errorMessage = `An unexpected error occurred: ${error.message}`
+    try {
+      await processingMessage.edit(errorMessage.substring(0, 2000))
+    } catch (editErr) {
+      console.error('Failed to edit original message with error:', editErr)
+      // Fallback reply if editing fails (should be rare after initial success)
+      try {
+        if (isInteraction) await message.followUp(errorMessage.substring(0, 2000))
+        else await message.reply(errorMessage.substring(0, 2000))
+      } catch (fallbackReplyError) {
+        console.error('Failed fallback reply:', fallbackReplyError)
+      }
+    }
+  }
+}
+
 module.exports = {
   name: Events.InteractionCreate,
   async execute (interaction) {
@@ -359,6 +534,8 @@ module.exports = {
         await handleAddCommand(interaction)
       } else if (commandName === 'drop') {
         await handleDropCommand(interaction)
+      } else if (commandName === 'mention') {
+        await handleMentionInteraction(interaction)
       } else {
         // Handle other chat input commands or provide a default response
         console.log(`Received unhandled chat input command: ${commandName}`)
@@ -379,4 +556,14 @@ module.exports = {
       }
     }
   }
+}
+
+// Add separate handling for regular messages mentioning the bot
+module.exports.handleMessage = async (message) => {
+  // Ignore messages from bots or without mention
+  if (message.author.bot || !message.mentions.has(message.client.user)) {
+    return
+  }
+  console.log(`Received mention from ${message.author.tag}: ${message.content}`)
+  await handleMentionInteraction(message) // Reuse the same handler
 }

@@ -224,7 +224,9 @@ test.afterEach.always(async t => {
     console.log(`Attempting cleanup of: ${t.context.repoPath} using sudo rm -rf`) // <<< Log method
     try {
       // Use sudo rm -rf since appuser doesn't own the contents
+      console.log(`[TEST HANG DEBUG] Before sudo rm -rf (${t.title})`)
       execFileSync('sudo', ['rm', '-rf', t.context.repoPath]) // <<< Use sudo rm -rf
+      console.log(`[TEST HANG DEBUG] After sudo rm -rf (${t.title})`)
       console.log(`Cleaned test repo dir: ${t.context.repoPath}`)
     } catch (e) {
       // Log error but don't fail test on cleanup failure
@@ -299,7 +301,9 @@ test.serial('/add-repo Command - Non-Admin', async (t) => {
   const interaction = createMockInteraction({ isAdmin: false })
 
   // Directly call the mocked handler's execute method
+  console.log(`[TEST HANG DEBUG] Before execute (${t.title})`)
   await interactionCreateHandler.execute(interaction) // <<< Call execute
+  console.log(`[TEST HANG DEBUG] After execute (${t.title})`)
 
   t.true(interaction.stubs.reply.calledOnce, 'reply should be called once')
   const replyArgs = interaction.stubs.reply.firstCall.args[0]
@@ -337,7 +341,9 @@ test.serial('/add-repo - Success Case (New Repo, Local Clone)', async t => {
   mockSecureKeys.writeTempKey.resolves(path.join(TEST_TEMP_KEY_DIR, `${assignedUserId}-${guildId}-${channelId}-key.pem`))
 
   // Execute the handler's execute method
+  console.log(`[TEST HANG DEBUG] Before execute (${t.title})`)
   await interactionCreateHandler.execute(interaction)
+  console.log(`[TEST HANG DEBUG] After execute (${t.title})`)
 
   // --- Assertions ---
   // Interaction flow
@@ -415,7 +421,9 @@ test.serial('/add-repo - Clone Failure Case (Invalid Local Path)', async t => {
   mockSecureKeys.writeTempKey.resolves(path.join(TEST_TEMP_KEY_DIR, `${assignedUserId}-${guildId}-${channelId}-key.pem`))
 
   // Execute the handler's execute method
+  console.log(`[TEST HANG DEBUG] Before execute (${t.title})`)
   await interactionCreateHandler.execute(interaction)
+  console.log(`[TEST HANG DEBUG] After execute (${t.title})`)
 
   // --- Assertions ---
   // Initial steps should succeed
@@ -448,18 +456,6 @@ test.serial('/add-repo - Clone Failure Case (Invalid Local Path)', async t => {
   t.true(mockSecureKeys.deleteTempKey.calledOnce, 'deleteTempKey called in finally')
 })
 
-// Add more tests for other failure scenarios as needed:
-// - fetch failure (already exists, verify mocks)
-// - encrypt failure (already exists, verify mocks)
-// - distinct failure
-// - pool exhausted (already exists, verify mocks)
-// - mkdir failure (requires mocking fs.mkdir to reject, or setting invalid TEST_REPO_BASE perms)
-// - chown failure (requires mocking execFileSync to throw, or running as non-root)
-// - writeTempKey failure (mockSecureKeys.writeTempKey.rejects())
-// - decrypt failure (mockCrypto.decrypt.returns(null))
-// - updateOne failure (MockRepositoryModel.updateOne.rejects())
-// - deleteTempKey failure (mockSecureKeys.deleteTempKey.rejects())
-
 // Example: Test case for writeTempKey failure
 test.serial('/add-repo - Failure Case (writeTempKey fails)', async t => {
   const channelId = 'channel-fail-writekey'
@@ -486,7 +482,9 @@ test.serial('/add-repo - Failure Case (writeTempKey fails)', async t => {
   mockSecureKeys.writeTempKey.rejects(new Error('Disk full')) // Simulate failure
 
   // Execute the handler's execute method
+  console.log(`[TEST HANG DEBUG] Before execute (${t.title})`)
   await interactionCreateHandler.execute(interaction)
+  console.log(`[TEST HANG DEBUG] After execute (${t.title})`)
 
   // Assertions
   t.true(interaction.stubs.deferReply.calledOnce, 'deferReply called')
@@ -535,7 +533,9 @@ test.serial('/add-repo - Fetch Key Failure', async (t) => {
   })
 
   // Execute the handler's execute method
+  console.log(`[TEST HANG DEBUG] Before execute (${t.title})`)
   await interactionCreateHandler.execute(interaction)
+  console.log(`[TEST HANG DEBUG] After execute (${t.title})`)
 
   t.true(interaction.stubs.deferReply.calledOnce, 'deferReply called')
   t.true(interaction.stubs.followUp.calledOnce, 'followUp called')

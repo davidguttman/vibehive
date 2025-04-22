@@ -1,1 +1,2 @@
-aider-chat 
+aider-chat
+GitPython 

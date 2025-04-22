@@ -15,7 +15,9 @@ const config = {
   discordToken: process.env.DISCORD_TOKEN || '',
   discordClientId: process.env.DISCORD_CLIENT_ID || '',
   mongoURI: process.env.MONGODB_URI || '',
-  mongoDBName: process.env.MONGODB_DB_NAME || ''
+  mongoDBName: process.env.MONGODB_DB_NAME || '',
+  // Base directory for cloning repositories
+  repoBaseDir: process.env.REPO_BASE_DIR || '/tmp/vibehive-repos'
 }
 
 // 4. Immediately Run Code (Validation - only in non-test environments)

@@ -1,10 +1,12 @@
-# ---- Stage 1: Builder ----
-FROM node:18-bullseye-slim AS builder
-ENV NODE_ENV=test
+# Use Node.js 20
+FROM node:20-bullseye-slim
+
+# Set NODE_ENV via runtime flags (e.g., docker run -e NODE_ENV=...)
+# ENV NODE_ENV=development # Or test, or leave unset
+
 WORKDIR /app
 
-# Install build/test dependencies (including python/pip/git/sudo AND libcurl4)
-# Same as production stage for now, could be optimized later if needed
+# Install build/test/run dependencies (including python/pip/git/sudo AND libcurl4)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     python3 \
@@ -15,39 +17,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
-# Install node modules (including devDependencies)
-COPY package.json package-lock.json ./
-RUN npm ci
-
-# Install python dependencies
+# Install python dependencies FIRST
 COPY requirements.txt ./
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-# Copy all source code and test files
-# .dockerignore prevents copying unnecessary files like local node_modules/.git
-COPY . .
+# Install node modules (including devDependencies needed for tests and potentially runtime) SECOND
+COPY package.json package-lock.json ./
+RUN npm ci
 
-# Run tests - This will fail the build if tests don't pass
-ENV RUNNING_IN_DOCKER=true
-RUN npm test
-
-# ---- Stage 2: Production ----
-FROM node:18-bullseye-slim
-ENV NODE_ENV=production
-WORKDIR /app
-
-# Install production system dependencies (including libcurl4)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    python3 \
-    python3-pip \
-    tree \
-    sudo \
-    libcurl4 \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
-
-# Create users/groups and configure sudo (Copied from previous Dockerfile)
+# Create users/groups and configure sudo BEFORE copying code 
+# to leverage caching if users/sudo don't change
 # --- User and Group Setup --- START ---
 RUN groupadd -r appuser && useradd -r -g appuser -m -d /app -s /bin/bash appuser
 RUN groupadd coders
@@ -76,21 +55,13 @@ RUN echo "# Allow appuser to run specific commands as coderX users" > /etc/sudoe
 RUN chmod 0440 /etc/sudoers.d/appuser-privs
 # --- Sudo Configuration --- END ---
 
-# Install production node modules ONLY
-# Copy package files from builder stage just to be explicit, though not strictly needed if not changed
-COPY --from=builder /app/package.json /app/package-lock.json ./
-RUN npm ci --only=production
+# Copy all source code
+# .dockerignore prevents copying unnecessary files like local node_modules/.git
+COPY . .
 
-# Install production python dependencies
-COPY --from=builder /app/requirements.txt ./
-RUN pip3 install --no-cache-dir -r requirements.txt
-
-# Copy application code from builder stage
-COPY --from=builder /app /app
-
-# Set ownership and switch user
+# Set ownership and switch user (BEFORE CMD)
 RUN chown -R appuser:appuser /app
 USER appuser
 
-# Define the command to run the application
+# Define the command to run the application (for production)
 CMD ["node", "index.js"] 

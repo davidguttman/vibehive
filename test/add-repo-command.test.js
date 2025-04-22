@@ -4,7 +4,7 @@ const proxyquire = require('proxyquire').noCallThru()
 const sinon = require('sinon')
 const path = require('node:path')
 const fs = require('node:fs/promises')
-const { execSync } = require('node:child_process')
+const { execSync, execFileSync } = require('node:child_process')
 const { PermissionsBitField } = require('discord.js')
 const { MongoMemoryServer } = require('mongodb-memory-server')
 const mongoose = require('mongoose') // Required for ObjectId
@@ -221,14 +221,14 @@ test.afterEach.always(async t => {
 
   // Cleanup specific repo dir potentially created during the test
   if (t.context.repoPath) {
-    console.log(`Attempting cleanup of: ${t.context.repoPath}`)
+    console.log(`Attempting cleanup of: ${t.context.repoPath} using sudo rm -rf`) // <<< Log method
     try {
-      // Use fs.rm, assumes the test runner has permissions or use sudo if needed
-      await fs.rm(t.context.repoPath, { recursive: true, force: true })
+      // Use sudo rm -rf since appuser doesn't own the contents
+      execFileSync('sudo', ['rm', '-rf', t.context.repoPath]) // <<< Use sudo rm -rf
       console.log(`Cleaned test repo dir: ${t.context.repoPath}`)
     } catch (e) {
       // Log error but don't fail test on cleanup failure
-      console.warn(`Could not clean up repo path ${t.context.repoPath}: ${e.message}`)
+      console.error(`Failed to clean up repo path ${t.context.repoPath} using sudo: ${e.message}`) // <<< Update log message
     }
   }
   console.log(`>>> TEST.AFTEREACH.ALWAYS END (${t.title}) <<<`) // <<< Log end

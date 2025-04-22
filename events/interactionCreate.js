@@ -275,10 +275,9 @@ async function handleAddRepoCommand (interaction) {
       // --- Clone Succeeded ---
       console.log(`Repository cloned successfully into ${repoPath}. Stdout: ${cloneStdout}`)
       // Update reply on success
-      await interaction.followUp( // Use followUp since we deferred
-        // <<< Adjusted success message to match tutorial example more closely
-        `✅ Repository '${repoUrl}' configured, cloned successfully, and assigned User ID: ${assignedUserId}.`
-      )
+      await interaction.followUp({
+        content: `✅ Repository '${repoUrl}' configured, cloned successfully, and assigned User ID: ${assignedUserId}.`
+      })
     }
     // === END OF INSERTED/MODIFIED CORE LOGIC ===
   } catch (error) {
